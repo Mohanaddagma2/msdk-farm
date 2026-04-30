@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: msdk-farm
+    env: node
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: WALLET_USDT
+        generateValue: false
+      - key: WALLET_BTC
+        generateValue: false
+      - key: WALLET_ETH
+        generateValue: false
