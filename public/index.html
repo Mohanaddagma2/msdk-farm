@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MSDK Farm</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a1628;--card:#0f2035;--border:#1a3a5c;--accent:#00d4aa;--gold:#f5c542;--red:#ff4757;--orange:#ff9f43;--green:#2ecc71;--purple:#9b59b6;--blue:#3498db;--text:#e8f0fe;--text2:#8899aa;--text3:#556677}
+html,body{width:100%;height:100%;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text)}
+body{display:flex;justify-content:center;padding:0}
+#app{width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--bg),#0d1f35,var(--bg));position:relative;overflow:hidden}
+.screen{display:none;flex-direction:column;flex:1}
+.screen.active{display:flex}
+
+/* Login */
+.login-screen{align-items:center;justify-content:center;padding:20px}
+.logo{font-size:42px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--accent),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:10px;color:var(--text3);letter-spacing:3px;margin-top:4px}
+.auth-card{width:100%;max-width:300px;margin-top:24px}
+
+/* Cards */
+.card{background:rgba(15,32,53,0.92);border-radius:14px;border:1px solid var(--border);padding:12px;backdrop-filter:blur(12px);margin-bottom:10px}
+.card-title{font-size:14px;font-weight:700;color:var(--accent);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+
+/* Inputs */
+input,select{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--text);font-size:13px;outline:none;font-family:inherit;margin-bottom:8px}
+input:focus{border-color:var(--accent)}
+
+/* Buttons */
+.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;color:#fff;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.btn-accent{background:linear-gradient(135deg,var(--accent),#00a885)}
+.btn-gold{background:linear-gradient(135deg,var(--gold),#d4a030)}
+.btn-red{background:linear-gradient(135deg,var(--red),#c0392b)}
+.btn-green{background:linear-gradient(135deg,var(--green),#27ae60)}
+.btn-purple{background:linear-gradient(135deg,var(--purple),#8e44ad)}
+.btn-blue{background:linear-gradient(135deg,var(--blue),#2980b9)}
+.btn-full{width:100%}
+.btn-sm{padding:5px 10px;font-size:10px}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* Top bar */
+.top-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 12px}
+.balance{display:flex;align-items:center;gap:4px;font-size:14px;font-weight:700;color:var(--accent)}
+.user-info{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2)}
+.logout{color:var(--red);cursor:pointer;font-size:10px}
+
+/* Level bar */
+.level-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.3);border-radius:10px;margin:0 12px 6px}
+.level-circle{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--orange));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#000;flex-shrink:0}
+.level-info{flex:1;min-width:0}
+.level-row{display:flex;justify-content:space-between;margin-bottom:3px}
+.level-title{font-size:10px;color:var(--gold);font-weight:600}
+.xp-text{font-size:9px;color:var(--text3)}
+
+/* Progress bar */
+.bar{width:100%;height:5px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width 0.5s}
+
+/* Tabs */
+.tabs{display:flex;gap:0;padding:0 8px;overflow-x:auto;flex-shrink:0;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:7px 10px;cursor:pointer;font-size:10px;font-weight:400;color:var(--text3);border-bottom:2px solid transparent;white-space:nowrap;transition:all 0.2s;flex-shrink:0}
+.tab.active{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:10px 12px;-webkit-overflow-scrolling:touch}
+.content::-webkit-scrollbar{width:3px}
+.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* Grid */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+
+/* Plot */
+.plot{background:rgba(0,0,0,0.3);border-radius:10px;padding:10px;text-align:center;border:1px solid rgba(26,58,92,0.3)}
+.plot.ready{border-color:rgba(46,204,113,0.5);box-shadow:0 0 8px rgba(46,204,113,0.15)}
+.plot-emoji{font-size:28px;margin-bottom:4px}
+.plot-name{font-size:11px;font-weight:600;margin-bottom:4px}
+.plot-time{font-size:9px;color:var(--text3);margin-top:3px}
+.plot-btns{display:flex;gap:4px;margin-top:6px;justify-content:center}
+
+/* Item row */
+.item-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(0,0,0,0.3);border-radius:10px;margin-bottom:6px;border:1px solid rgba(26,58,92,0.3)}
+.item-row.locked{opacity:0.5}
+.item-row.owned{border-color:rgba(46,204,113,0.3)}
+.item-emoji{font-size:28px;flex-shrink:0}
+.item-info{flex:1;min-width:0}
+.item-name{font-size:12px;font-weight:700}
+.item-desc{font-size:10px;color:var(--text3);margin-top:2px}
+.item-price{font-size:12px;font-weight:700;color:var(--gold)}
+.item-actions{flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+
+/* Pen animals display */
+.pen-animals{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0}
+.pen-animal{font-size:18px;padding:3px;border-radius:5px;background:rgba(0,0,0,0.2);border:1px solid transparent}
+.pen-animal.ready{background:rgba(46,204,113,0.15);border-color:rgba(46,204,113,0.4)}
+
+/* Factory */
+.factory-status{margin-top:6px}
+
+/* Market chips */
+.inv-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.inv-chip{padding:5px 10px;border-radius:8px;cursor:pointer;background:rgba(0,0,0,0.3);border:1px solid rgba(26,58,92,0.3);font-size:11px;transition:all 0.2s}
+.inv-chip.selected{background:rgba(0,212,170,0.15);border-color:var(--accent)}
+
+/* Inventory grid */
+.inv-item{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;text-align:center;border:1px solid rgba(26,58,92,0.3)}
+.inv-item-emoji{font-size:22px}
+.inv-item-name{font-size:10px;margin-top:2px}
+.inv-item-qty{font-size:14px;font-weight:700;color:var(--accent)}
+
+/* Chat */
+.chat-messages{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;max-height:300px}
+.chat-msg{background:rgba(0,0,0,0.3);border-radius:8px;padding:6px 10px}
+.chat-user{font-size:10px;color:var(--accent);font-weight:600}
+.chat-text{font-size:12px;margin-top:2px}
+.chat-time{font-size:8px;color:var(--text3);margin-top:2px}
+.chat-input-row{display:flex;gap:6px;margin-top:8px}
+.chat-input-row input{margin-bottom:0;flex:1}
+
+/* Wallet box */
+.wallet-box{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+.wallet-name{font-size:11px;font-weight:700;margin-bottom:3px}
+.wallet-addr{font-size:9px;color:var(--text3);word-break:break-all;font-family:monospace;direction:ltr;text-align:left}
+
+/* History item */
+.history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(26,58,92,0.2)}
+.status-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px}
+.status-pending{color:var(--orange);background:rgba(255,159,67,0.1)}
+.status-approved{color:var(--green);background:rgba(46,204,113,0.1)}
+.status-rejected{color:var(--red);background:rgba(255,71,87,0.1)}
+
+/* Admin */
+.admin-tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
+.admin-tab{padding:5px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;background:rgba(0,0,0,0.3);color:var(--text3);border:1px solid transparent}
+.admin-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(245,197,66,0.1)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.stat-box{background:rgba(0,0,0,0.3);border-radius:8px;padding:10px;text-align:center}
+.stat-label{font-size:9px;color:var(--text3)}
+.stat-value{font-size:18px;font-weight:700;margin-top:2px}
+.player-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid rgba(26,58,92,0.2)}
+.online-dot{width:8px;height:8px;border-radius:50%}
+
+/* Modal */
+.modal{display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)}
+.modal.active{display:flex}
+.modal-box{background:var(--card);border-radius:16px;border:1px solid var(--border);padding:16px;max-width:360px;width:90%;max-height:80vh;overflow-y:auto;direction:rtl}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.modal-title{font-size:15px;font-weight:700;color:var(--accent)}
+.modal-close{cursor:pointer;font-size:18px;color:var(--text3);background:none;border:none}
+
+/* Crop option */
+.crop-option{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(0,0,0,0.3);border-radius:10px;cursor:pointer;border:1px solid rgba(26,58,92,0.3);margin-bottom:6px;transition:all 0.2s}
+.crop-option:hover{border-color:var(--accent);background:rgba(0,212,170,0.08)}
+
+/* Toast */
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;padding:10px 20px;border-radius:10px;color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);animation:slideDown 0.3s ease;font-family:inherit;display:none}
+.toast.show{display:block}
+@keyframes slideDown{from{transform:translate(-50%,-20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+
+/* Empty state */
+.empty{font-size:11px;color:var(--text3);text-align:center;padding:20px}
+.note{font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.7}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ===== Toast ===== -->
+<div id="toast" class="toast"></div>
+
+<!-- ===== Login Screen ===== -->
+<div id="loginScreen" class="screen login-screen active">
+  <div class="logo">MSDK</div>
+  <div class="logo-sub">SMART FARM SIMULATOR</div>
+  <div class="auth-card">
+    <div class="card">
+      <div class="card-title" id="authTitle">تسجيل الدخول</div>
+      <input id="authUser" placeholder="اسم المستخدم" autocomplete="off">
+      <input id="authPass" type="password" placeholder="كلمة السر">
+      <button class="btn btn-accent btn-full" id="authBtn" onclick="doAuth()">دخول 🚀</button>
+      <div style="text-align:center;font-size:11px;color:var(--text2);margin-top:10px;cursor:pointer" id="authToggle" onclick="toggleAuth()">ليس لديك حساب؟ سجل الآن</div>
+    </div>
+  </div>
+  <div style="margin-top:16px;font-size:10px;color:var(--text3)">1 MSDK داخل اللعبة = 1 MSDK خارج اللعبة</div>
+</div>
+
+<!-- ===== Game Screen ===== -->
+<div id="gameScreen" class="screen">
+  <!-- Logo -->
+  <div style="text-align:center;padding:8px 0 2px">
+    <div class="logo" style="font-size:22px">MSDK</div>
+    <div class="logo-sub" style="font-size:8px">SMART FARM SIMULATOR</div>
+  </div>
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="balance">💰 <span id="balanceDisplay">0</span> MSDK</div>
+    <div class="user-info">
+      <span>👤 <span id="usernameDisplay"></span></span>
+      <span class="logout" onclick="doLogout()">خروج</span>
+    </div>
+  </div>
+  <!-- Level -->
+  <div class="level-bar">
+    <div class="level-circle" id="levelNum">1</div>
+    <div class="level-info">
+      <div class="level-row">
+        <span class="level-title" id="levelTitle">مبتدئ</span>
+        <span class="xp-text" id="xpText">0/500 XP</span>
+      </div>
+      <div class="bar"><div class="bar-fill" id="xpBar" style="width:0%;background:var(--gold)"></div></div>
+    </div>
+  </div>
+  <!-- Tabs -->
+  <div class="tabs" id="tabsContainer"></div>
+  <!-- Content -->
+  <div class="content" id="mainContent"></div>
+</div>
+
+<!-- ===== Crop Modal ===== -->
+<div id="cropModal" class="modal" onclick="closeCropModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">اختر محصول 🌱</span>
+      <button class="modal-close" onclick="closeCropModal()">✕</button>
+    </div>
+    <div id="cropOptions"></div>
+  </div>
+</div>
+
+<script>
+// ========== GAME CONSTANTS (match server exactly) ==========
+const CROPS=[
+  {id:"onion",name:"بصل",emoji:"🧅",growMs:6*3600000,cost:8,value:18,xp:5},
+  {id:"tomato",name:"طماطم",emoji:"🍅",growMs:8*3600000,cost:20,value:35,xp:8},
+  {id:"corn",name:"ذرة",emoji:"🌽",growMs:12*3600000,cost:15,value:30,xp:10},
+  {id:"potato",name:"بطاطس",emoji:"🥔",growMs:16*3600000,cost:12,value:25,xp:7},
+  {id:"wheat",name:"قمح",emoji:"🌾",growMs:24*3600000,cost:10,value:22,xp:12},
+  {id:"cotton",name:"قطن",emoji:"🏵️",growMs:48*3600000,cost:30,value:80,xp:25},
+  {id:"olive",name:"زيتون",emoji:"🫒",growMs:120*3600000,cost:40,value:150,xp:50},
+  {id:"grape",name:"عنب",emoji:"🍇",growMs:168*3600000,cost:50,value:200,xp:75},
+];
+const ANIMALS=[
+  {id:"chicken",name:"دجاج",emoji:"🐔",cost:200,prodMs:4*3600000,product:"بيض",pEmoji:"🥚",pVal:15,xp:8,lvl:5,penId:"chicken_pen"},
+  {id:"sheep",name:"خروف",emoji:"🐑",cost:800,prodMs:12*3600000,product:"صوف",pEmoji:"🧶",pVal:50,xp:20,lvl:10,penId:"sheep_pen"},
+  {id:"goat",name:"ماعز",emoji:"🐐",cost:1000,prodMs:8*3600000,product:"حليب_ماعز",pEmoji:"🥛",pVal:40,xp:15,lvl:15,penId:"goat_pen"},
+  {id:"cow",name:"بقرة",emoji:"🐄",cost:3000,prodMs:6*3600000,product:"حليب",pEmoji:"🥛",pVal:60,xp:25,lvl:20,penId:"cow_pen"},
+  {id:"bee",name:"نحل",emoji:"🐝",cost:1500,prodMs:24*3600000,product:"عسل",pEmoji:"🍯",pVal:100,xp:40,lvl:25,penId:"bee_pen"},
+  {id:"horse",name:"حصان",emoji:"🐴",cost:8000,prodMs:48*3600000,product:"أرباح_سباق",pEmoji:"🏆",pVal:250,xp:80,lvl:30,penId:"horse_pen"},
+];
+const PENS=[
+  {id:"chicken_pen",name:"قن دجاج",emoji:"🏠",cost:500,cap:4,lvl:5,animalId:"chicken",upCost:400},
+  {id:"sheep_pen",name:"حظيرة أغنام",emoji:"🏡",cost:1500,cap:3,lvl:10,animalId:"sheep",upCost:1200},
+  {id:"goat_pen",name:"حظيرة ماعز",emoji:"🏘️",cost:2000,cap:3,lvl:15,animalId:"goat",upCost:1500},
+  {id:"cow_pen",name:"حظيرة أبقار",emoji:"🏗️",cost:5000,cap:2,lvl:20,animalId:"cow",upCost:4000},
+  {id:"bee_pen",name:"خلية نحل",emoji:"🍯",cost:3000,cap:5,lvl:25,animalId:"bee",upCost:2500},
+  {id:"horse_pen",name:"إسطبل",emoji:"🏇",cost:10000,cap:2,lvl:30,animalId:"horse",upCost:8000},
+];
+const FACTORIES=[
+  {id:"mill",name:"طاحونة",emoji:"🏭",desc:"تحويل القمح إلى طحين",cost:2000,lvl:5,input:"wheat",inQty:5,output:"طحين",outQty:3,outVal:50,prodMs:2*3600000,xp:15},
+  {id:"bakery",name:"مخبز",emoji:"🍞",desc:"تحويل الطحين إلى خبز",cost:3500,lvl:8,input:"طحين",inQty:3,output:"خبز",outQty:5,outVal:30,prodMs:1.5*3600000,xp:12},
+  {id:"cannery",name:"مصنع معلبات",emoji:"🥫",desc:"تعليب الطماطم والذرة",cost:5000,lvl:10,input:"tomato",inQty:8,output:"معلبات",outQty:4,outVal:80,prodMs:3*3600000,xp:20},
+  {id:"cheese",name:"مصنع جبن",emoji:"🧀",desc:"تحويل الحليب إلى جبن",cost:6000,lvl:12,input:"حليب",inQty:6,output:"جبن",outQty:3,outVal:120,prodMs:4*3600000,xp:25},
+  {id:"jam",name:"مصنع مربى",emoji:"🫙",desc:"صنع مربى من العنب",cost:8000,lvl:15,input:"grape",inQty:10,output:"مربى",outQty:5,outVal:100,prodMs:3*3600000,xp:30},
+  {id:"oil",name:"مصنع زيت",emoji:"🫒",desc:"عصر الزيتون لإنتاج زيت",cost:12000,lvl:18,input:"olive",inQty:12,output:"زيت_زيتون",outQty:4,outVal:200,prodMs:5*3600000,xp:40},
+  {id:"winery",name:"مصنع عصير",emoji:"🍷",desc:"عصير فاخر من العنب",cost:15000,lvl:20,input:"grape",inQty:15,output:"عصير_فاخر",outQty:3,outVal:350,prodMs:8*3600000,xp:50},
+  {id:"textile",name:"مصنع نسيج",emoji:"🧵",desc:"تحويل القطن إلى أقمشة",cost:18000,lvl:22,input:"cotton",inQty:10,output:"قماش",outQty:4,outVal:280,prodMs:6*3600000,xp:45},
+];
+const PREMIUM=[
+  {id:"auto_water",name:"ري تلقائي",desc:"يروي محاصيلك تلقائياً",cost:500,emoji:"💧"},
+  {id:"auto_harvest",name:"حصاد تلقائي",desc:"يحصد محاصيلك الجاهزة",cost:1000,emoji:"🌾"},
+  {id:"auto_plant",name:"زراعة تلقائية",desc:"يزرع تلقائياً بعد الحصاد",cost:1500,emoji:"🌱"},
+  {id:"auto_collect",name:"جمع تلقائي",desc:"يجمع إنتاج الحيوانات",cost:800,emoji:"📦"},
+  {id:"double_xp",name:"XP مضاعف",desc:"ضعف XP لمدة 24 ساعة",cost:300,emoji:"⭐"},
+];
+const INV_UP=[{l:1,cap:50,cost:0},{l:2,cap:100,cost:500},{l:3,cap:200,cost:2000},{l:4,cap:500,cost:8000},{l:5,cap:1000,cost:25000}];
+const TITLES=["مبتدئ","مزارع جديد","مزارع","مزارع نشيط","مزارع ماهر","مزارع خبير","محترف","سيد المزرعة","أسطورة","ملك المزارع"];
+
+// ========== STATE ==========
+let S={user:null,token:null,tab:"farm",pd:{},adminTab:"stats",cropPlot:-1,sellItem:null,sse:null};
+
+// ========== UTILS ==========
+function xpNeeded(lv){return Math.floor(500*Math.pow(lv,1.8))}
+function getTitle(lv){return TITLES[Math.min(Math.floor(lv/5),TITLES.length-1)]}
+function landPrice(n){return Math.floor(200*Math.pow(2,Math.max(0,n-2)))}
+function fmtTime(ms){
+  if(ms<=0)return"جاهز!";
+  let s=ms/1000,d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);
+  if(d>0)return d+"ي "+h+"س";
+  if(h>0)return h+"س "+m+"د";
+  return m+"د";
+}
+function invUsed(inv){return Object.values(inv||{}).reduce((a,b)=>a+b,0)}
+function invCap(lv){return(INV_UP.find(u=>u.l===(lv||1))||{cap:50}).cap}
+function getCrop(id){return CROPS.find(c=>c.id===id)}
+function getAnimal(id){return ANIMALS.find(a=>a.id===id)}
+function getPen(id){return PENS.find(p=>p.id===id)}
+function getFactory(id){return FACTORIES.find(f=>f.id===id)}
+function itemEmoji(id){const c=getCrop(id);if(c)return c.emoji;const a=ANIMALS.find(x=>x.product===id);if(a)return a.pEmoji;return"📦"}
+function itemName(id){const c=getCrop(id);if(c)return c.name;return id}
+
+// ========== API ==========
+async function api(url,method='GET',body=null){
+  const h={'Content-Type':'application/json'};
+  if(S.token)h['Authorization']=S.token;
+  const opts={method,headers:h};
+  if(body)opts.body=JSON.stringify(body);
+  try{const r=await fetch(url,opts);return await r.json();}
+  catch(e){return{error:e.message}}
+}
+
+// ========== TOAST ==========
+let toastTimer;
+function toast(msg,type='info'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.style.background=type==='success'?'var(--green)':type==='error'?'var(--red)':'var(--accent)';
+  el.className='toast show';
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.className='toast',2500);
+}
+
+// ========== AUTH ==========
+let isRegister=false;
+function toggleAuth(){
+  isRegister=!isRegister;
+  document.getElementById('authTitle').textContent=isRegister?'حساب جديد':'تسجيل الدخول';
+  document.getElementById('authBtn').textContent=isRegister?'إنشاء حساب ✨':'دخول 🚀';
+  document.getElementById('authToggle').textContent=isRegister?'لديك حساب؟ سجل دخول':'ليس لديك حساب؟ سجل الآن';
+}
+async function doAuth(){
+  const u=document.getElementById('authUser').value.trim();
+  const p=document.getElementById('authPass').value.trim();
+  if(!u||!p){toast('أدخل اسم المستخدم وكلمة السر','error');return}
+  if(isRegister){
+    const r=await api('/api/register','POST',{username:u,password:p});
+    if(r.error){toast(r.error,'error');return}
+    toast('تم إنشاء الحساب! سجل دخول','success');
+    isRegister=false;toggleAuth();return;
+  }
+  const r=await api('/api/login','POST',{username:u,password:p});
+  if(r.error){toast(r.error,'error');return}
+  S.user=u;S.token=r.token;
+  localStorage.setItem('token',r.token);localStorage.setItem('user',u);
+  toast('مرحباً '+u+'! 👋','success');
+  showGame();
+}
+function doLogout(){
+  api('/api/logout','POST');
+  S.user=null;S.token=null;S.pd={};
+  localStorage.removeItem('token');localStorage.removeItem('user');
+  if(S.sse){S.sse.close();S.sse=null}
+  document.getElementById('loginScreen').classList.add('active');
+  document.getElementById('gameScreen').classList.remove('active');
+}
+
+// ========== AUTO LOGIN ==========
+(function(){
+  const t=localStorage.getItem('token'),u=localStorage.getItem('user');
+  if(t&&u){S.token=t;S.user=u;showGame();}
+})();
+
+// ========== SHOW GAME ==========
+function showGame(){
+  document.getElementById('loginScreen').classList.remove('active');
+  document.getElementById('gameScreen').classList.add('active');
+  document.getElementById('usernameDisplay').textContent=S.user;
+  buildTabs();
+  pollPlayer();
+  startSSE();
+  setInterval(renderTab,1000); // timer updates
+}
+
+// ========== SSE ==========
+function startSSE(){
+  if(S.sse)S.sse.close();
+  S.sse=new EventSource('/api/events?token='+encodeURIComponent(S.token));
+  S.sse.addEventListener('market',()=>{if(S.tab==='market')renderTab()});
+  S.sse.addEventListener('chat',()=>{if(S.tab==='chat')loadChat()});
+  S.sse.addEventListener('notification',e=>{try{toast(e.data,'info')}catch(x){}});
+}
+
+// ========== POLL ==========
+async function pollPlayer(){
+  const r=await api('/api/player/full');
+  if(!r.error&&r.username){S.pd=r;updateHeader();renderTab();}
+  setTimeout(pollPlayer,5000);
+}
+function updateHeader(){
+  const d=S.pd;if(!d.username)return;
+  document.getElementById('balanceDisplay').textContent=(d.msdk||0).toLocaleString();
+  document.getElementById('levelNum').textContent=d.level||1;
+  document.getElementById('levelTitle').textContent=getTitle(d.level||1);
+  const xn=xpNeeded(d.level||1);
+  document.getElementById('xpText').textContent=(d.xp||0)+'/'+xn+' XP';
+  document.getElementById('xpBar').style.width=((d.xp||0)/xn*100)+'%';
+}
+
+// ========== TABS ==========
+function buildTabs(){
+  const tabs=[
+    {id:'farm',label:'المزرعة',e:'🌾'},{id:'animals',label:'الحيوانات',e:'🐄'},
+    {id:'factory',label:'المصانع',e:'🏭'},{id:'market',label:'السوق',e:'🛒'},
+    {id:'inventory',label:'المخزون',e:'📦'},{id:'store',label:'المتجر',e:'⭐'},
+    {id:'topup',label:'شحن',e:'💰'},{id:'withdraw',label:'سحب',e:'💸'},
+    {id:'chat',label:'دردشة',e:'💬'},
+  ];
+  if(S.user==='MSDK')tabs.push({id:'admin',label:'إدارة',e:'👑'});
+  document.getElementById('tabsContainer').innerHTML=tabs.map(t=>
+    `<div class="tab${S.tab===t.id?' active':''}" onclick="switchTab('${t.id}')">${t.e} ${t.label}</div>`
+  ).join('');
+}
+function switchTab(id){
+  S.tab=id;buildTabs();renderTab();
+  if(id==='chat')loadChat();
+  if(id==='market')loadMarket();
+}
+
+// ========== RENDER CURRENT TAB ==========
+function renderTab(){
+  const c=document.getElementById('mainContent');
+  const d=S.pd;if(!d.username){c.innerHTML='<div class="empty">جاري التحميل...</div>';return}
+  switch(S.tab){
+    case'farm':renderFarm(c,d);break;
+    case'animals':renderAnimals(c,d);break;
+    case'factory':renderFactory(c,d);break;
+    case'market':renderMarket(c,d);break;
+    case'inventory':renderInventory(c,d);break;
+    case'store':renderStore(c,d);break;
+    case'topup':renderTopup(c,d);break;
+    case'withdraw':renderWithdraw(c,d);break;
+    case'chat':renderChat(c,d);break;
+    case'admin':renderAdmin(c,d);break;
+    default:c.innerHTML='';
+  }
+}
+
+// ========== FARM ==========
+function renderFarm(c,d){
+  const plots=d.plots||[];
+  const now=Date.now();
+  let html='<div class="card"><div class="card-title">🌱 حقولك ('+plots.length+' قطع)</div><div class="grid-2">';
+  plots.forEach((p,i)=>{
+    const crop=p.crop?getCrop(p.crop):null;
+    const elapsed=crop?(now-p.plantedAt):0;
+    const progress=crop?Math.min(100,elapsed/crop.growMs*100):0;
+    const ready=crop&&elapsed>=crop.growMs;
+    html+='<div class="plot'+(ready?' ready':'')+'">';
+    html+='<div class="plot-emoji">'+(crop?crop.emoji:'🟫')+'</div>';
+    if(crop){
+      html+='<div class="plot-name">'+crop.name+'</div>';
+      html+='<div class="bar"><div class="bar-fill" style="width:'+progress+'%;background:'+(ready?'var(--green)':'var(--accent)')+'"></div></div>';
+      html+='<div class="plot-time" style="color:'+(ready?'var(--green)':'')+'">'+
+        (ready?'جاهز للحصاد! ✅':fmtTime(crop.growMs-elapsed))+'</div>';
+      html+='<div class="plot-btns">';
+      if(ready)html+='<button class="btn btn-green btn-sm" onclick="doHarvest('+i+')">حصاد 🌾</button>';
+      else html+='<button class="btn btn-blue btn-sm" onclick="doWater('+i+')"'+(p.watered?' disabled':'')+'>'+
+        (p.watered?'مروي ✓':'ري 💧 5M')+'</button>';
+      html+='</div>';
+    }else{
+      html+='<div style="font-size:10px;color:var(--text3);margin-bottom:6px">أرض فارغة</div>';
+      html+='<button class="btn btn-accent btn-sm" onclick="openCropModal('+i+')">ازرع 🌱</button>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  const lp=landPrice(plots.length);
+  html+='<div style="margin-top:10px"><button class="btn btn-gold btn-full" onclick="doBuyLand()">شراء أرض جديدة 🌍 — '+lp.toLocaleString()+' MSDK</button></div>';
+  html+='</div>';
+  c.innerHTML=html;
+}
+function openCropModal(idx){
+  S.cropPlot=idx;
+  let html='';
+  CROPS.forEach(cr=>{
+    html+='<div class="crop-option" onclick="doPlant(\''+cr.id+'\')">';
+    html+='<span style="font-size:28px">'+cr.emoji+'</span>';
+    html+='<div style="flex:1"><div style="font-size:12px;font-weight:700">'+cr.name+'</div>';
+    html+='<div style="font-size:10px;color:var(--text3)">نمو: '+fmtTime(cr.growMs)+' | XP: +'+cr.xp+'</div></div>';
+    html+='<div style="text-align:left"><div style="font-size:12px;font-weight:700;color:var(--gold)">'+cr.cost+' M</div>';
+    html+='<div style="font-size:9px;color:var(--green)">قيمة ≈ '+cr.value+' M</div></div>';
+    html+='</div>';
+  });
+  document.getElementById('cropOptions').innerHTML=html;
+  document.getElementById('cropModal').classList.add('active');
+}
+function closeCropModal(e){if(!e||e.target.id==='cropModal')document.getElementById('cropModal').classList.remove('active')}
+async function doPlant(cropId){
+  closeCropModal();
+  const r=await api('/api/plant','POST',{plotIndex:S.cropPlot,cropId});
+  if(r.error){toast(r.error,'error');return}
+  toast('تمت الزراعة! 🌱','success');pollPlayer();
+}
+async function doWater(i){
+  const r=await api('/api/water','POST',{plotIndex:i});
+  if(r.error){toast(r.error,'error');return}
+  toast('تم الري! 💧','success');pollPlayer();
+}
+async function doHarvest(i){
+  const r=await api('/api/harvest','POST',{plotIndex:i});
+  if(r.error){toast(r.error,'error');return}
+  toast('حصاد '+(r.qty||1)+'× '+(r.cropId||'')+ ' (+'+( r.xp||0)+' XP)','success');pollPlayer();
+}
+async function doBuyLand(){
+  const r=await api('/api/buy-land','POST',{});
+  if(r.error){toast(r.error,'error');return}
+  toast('اشتريت أرض جديدة! 🌍','success');pollPlayer();
+}
+
+// ========== ANIMALS ==========
+function renderAnimals(c,d){
+  let html='';
+  const pens=d.ownedPens||{};
+  const now=Date.now();
+  // Owned pens
+  if(Object.keys(pens).length>0){
+    html+='<div class="card"><div class="card-title">🏡 حظائرك</div>';
+    for(const pid in pens){
+      const pen=pens[pid];const pDef=getPen(pid);if(!pDef)continue;
+      const animal=getAnimal(pDef.animalId);
+      const maxCap=pDef.cap*(pen.level||1);
+      const upCost=pDef.upCost*(pen.level||1);
+      html+='<div class="item-row owned">';
+      html+='<span class="item-emoji">'+pDef.emoji+'</span>';
+      html+='<div class="item-info"><div class="item-name">'+pDef.name+' (مستوى '+(pen.level||1)+')</div>';
+      html+='<div class="item-desc">'+(pen.animals||[]).length+'/'+maxCap+' حيوان</div>';
+      // Animals
+      if(pen.animals&&pen.animals.length>0){
+        html+='<div class="pen-animals">';
+        pen.animals.forEach(a=>{
+          const ready=animal&&(now-a.lastCollect)>=animal.prodMs;
+          html+='<span class="pen-animal'+(ready?' ready':'')+'">'+animal.emoji+(ready?' ✅':'')+'</span>';
+        });
+        html+='</div>';
+      }
+      html+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
+      html+='<button class="btn btn-purple btn-sm" onclick="doUpgradePen(\''+pid+'\')">ترقية '+upCost+'M</button>';
+      html+='<button class="btn btn-accent btn-sm" onclick="doBuyAnimal(\''+pDef.animalId+'\')"'+((pen.animals||[]).length>=maxCap||d.msdk<animal.cost?' disabled':'')+'>شراء '+animal.name+' '+animal.cost+'M</button>';
+      if(pen.animals&&pen.animals.length>0)html+='<button class="btn btn-green btn-sm" onclick="doCollectAnimal(\''+pDef.animalId+'\')">جمع '+animal.pEmoji+'</button>';
+      html+='</div></div></div>';
+    }
+    html+='</div>';
+  }
+  // Buy pens
+  html+='<div class="card"><div class="card-title">🏗️ شراء حظيرة جديدة</div>';
+  html+='<div class="note">كل 5 مستويات تفتح نوع حظيرة جديد. اشترِ الحظيرة أولاً ثم الحيوان!</div>';
+  PENS.forEach(pen=>{
+    const owned=!!pens[pen.id];const locked=(d.level||1)<pen.lvl;
+    const animal=getAnimal(pen.animalId);
+    html+='<div class="item-row'+(locked?' locked':'')+(owned?' owned':'')+'">';
+    html+='<span class="item-emoji">'+pen.emoji+'</span>';
+    html+='<div class="item-info"><div class="item-name">'+pen.name+(owned?' <span style="color:var(--green);font-size:10px">✓ مملوكة</span>':'')+'</div>';
+    html+='<div class="item-desc">لـ '+animal.name+' '+animal.emoji+' | سعة: '+pen.cap+' | مستوى '+pen.lvl+'+</div>';
+    html+='<div class="item-desc">سعر الحيوان: '+animal.cost+' M | إنتاج: '+animal.pEmoji+' كل '+fmtTime(animal.prodMs)+'</div>';
+    html+='</div><div class="item-actions">';
+    if(owned)html+='<span style="font-size:10px;color:var(--green);font-weight:700">مملوكة ✅</span>';
+    else if(locked)html+='<span style="font-size:10px;color:var(--red)">🔒 مستوى '+pen.lvl+'</span>';
+    else html+='<button class="btn btn-gold btn-sm" onclick="doBuyPen(\''+pen.id+'\')">'+pen.cost+' M</button>';
+    html+='</div></div>';
+  });
+  html+='</div>';
+  c.innerHTML=html;
+}
+async function doBuyPen(id){const r=await api('/api/buy-pen','POST',{penId:id});if(r.error){toast(r.error,'error');return}toast('اشتريت الحظيرة! 🏡','success');pollPlayer()}
+async function doUpgradePen(id){const r=await api('/api/upgrade-pen','POST',{penId:id});if(r.error){toast(r.error,'error');return}toast('تمت الترقية!','success');pollPlayer()}
+async function doBuyAnimal(id){const r=await api('/api/buy-animal','POST',{animalId:id});if(r.error){toast(r.error,'error');return}toast('اشتريت الحيوان!','success');pollPlayer()}
+async function doCollectAnimal(id){const r=await api('/api/collect-animal','POST',{animalId:id});if(r.error){toast(r.error,'error');return}toast('تم الجمع! +'+(r.xp||0)+' XP','success');pollPlayer()}
+
+// ========== FACTORIES ==========
+function renderFactory(c,d){
+  let html='';const now=Date.now();
+  // Owned
+  if(d.ownedFactories&&d.ownedFactories.length>0){
+    html+='<div class="card"><div class="card-title">⚙️ مصانعك</div>';
+    d.ownedFactories.forEach((of,i)=>{
+      const f=getFactory(of.factoryId);if(!f)return;
+      const elapsed=of.producing&&of.startedAt?(now-of.startedAt):0;
+      const progress=of.producing?Math.min(100,elapsed/f.prodMs*100):0;
+      const ready=of.producing&&elapsed>=f.prodMs;
+      html+='<div class="item-row'+(ready?' owned':'')+'">';
+      html+='<span class="item-emoji">'+f.emoji+'</span>';
+      html+='<div class="item-info"><div class="item-name">'+f.name+'</div>';
+      html+='<div class="item-desc">'+f.desc+'</div>';
+      if(of.producing){
+        html+='<div class="factory-status"><div class="bar"><div class="bar-fill" style="width:'+progress+'%;background:'+(ready?'var(--green)':'var(--orange)')+'"></div></div>';
+        html+='<div style="font-size:9px;color:'+(ready?'var(--green)':'var(--text3)')+';margin-top:3px">'+(ready?'الإنتاج جاهز! ✅':'متبقي: '+fmtTime(f.prodMs-elapsed))+'</div></div>';
+        if(ready)html+='<button class="btn btn-green btn-sm" style="margin-top:4px" onclick="doCollectFactory('+i+')">جمع '+f.outQty+'× '+f.output+'</button>';
+      }else{
+        html+='<button class="btn btn-accent btn-sm" style="margin-top:4px" onclick="doStartFactory('+i+')">تشغيل ('+f.inQty+'× '+f.input+')</button>';
+        html+='<span style="font-size:9px;color:var(--text3);margin-right:6px">→ '+f.outQty+'× '+f.output+' ('+fmtTime(f.prodMs)+')</span>';
+      }
+      html+='</div></div>';
+    });
+    html+='</div>';
+  }
+  // Build new
+  html+='<div class="card"><div class="card-title">🏗️ بناء مصنع جديد</div>';
+  FACTORIES.forEach(f=>{
+    const locked=(d.level||1)<f.lvl;
+    const ownedCount=(d.ownedFactories||[]).filter(o=>o.factoryId===f.id).length;
+    html+='<div class="item-row'+(locked?' locked':'')+'">';
+    html+='<span class="item-emoji" style="font-size:32px">'+f.emoji+'</span>';
+    html+='<div class="item-info"><div class="item-name">'+f.name+(ownedCount>0?' <span style="color:var(--green);font-size:10px">('+ownedCount+' مبني)</span>':'')+'</div>';
+    html+='<div class="item-desc" style="color:var(--accent)">'+f.desc+'</div>';
+    html+='<div class="item-desc">المدخلات: '+f.inQty+'× '+f.input+' → المخرجات: '+f.outQty+'× '+f.output+'</div>';
+    html+='<div class="item-desc">وقت الإنتاج: '+fmtTime(f.prodMs)+' | قيمة: '+f.outVal+' M/وحدة</div>';
+    html+='<div class="item-price">السعر: '+f.cost.toLocaleString()+' MSDK | مستوى '+f.lvl+'+</div>';
+    html+='</div><div class="item-actions">';
+    if(locked)html+='<span style="font-size:10px;color:var(--red)">🔒 مستوى '+f.lvl+'</span>';
+    else html+='<button class="btn btn-gold btn-sm" onclick="doBuildFactory(\''+f.id+'\')"'+(d.msdk<f.cost?' disabled':'')+'>بناء</button>';
+    html+='</div></div>';
+  });
+  html+='</div>';
+  c.innerHTML=html;
+}
+async function doBuildFactory(id){const r=await api('/api/buy-factory','POST',{factoryId:id});if(r.error){toast(r.error,'error');return}toast('تم بناء المصنع!','success');pollPlayer()}
+async function doStartFactory(i){const r=await api('/api/start-factory','POST',{index:i});if(r.error){toast(r.error,'error');return}toast('بدأ الإنتاج...','info');pollPlayer()}
+async function doCollectFactory(i){const r=await api('/api/collect-factory','POST',{index:i});if(r.error){toast(r.error,'error');return}toast('تم الجمع! +'+(r.xp||0)+' XP','success');pollPlayer()}
+
+// ========== MARKET (P2P only) ==========
+let marketListings=[];
+async function loadMarket(){const r=await api('/api/market/listings');if(Array.isArray(r))marketListings=r;renderTab()}
+function renderMarket(c,d){
+  const inv=d.inventory||{};
+  let html='<div class="card"><div class="card-title">📤 عرض منتج للبيع</div>';
+  if(Object.keys(inv).length===0)html+='<div class="empty">مخزونك فارغ!</div>';
+  else{
+    html+='<div class="inv-chips">';
+    for(const item in inv)html+='<div class="inv-chip'+(S.sellItem===item?' selected':'')+'" onclick="selectSellItem(\''+item+'\')">'+itemEmoji(item)+' '+itemName(item)+' ×'+inv[item]+'</div>';
+    html+='</div>';
+    if(S.sellItem){
+      html+='<div style="display:flex;gap:6px;align-items:flex-end">';
+      html+='<div style="flex:1"><div style="font-size:9px;color:var(--text3);margin-bottom:2px">الكمية</div><input type="number" id="sellQty" min="1" max="'+(inv[S.sellItem]||1)+'" value="1" style="margin:0"></div>';
+      html+='<div style="flex:1"><div style="font-size:9px;color:var(--text3);margin-bottom:2px">السعر/وحدة</div><input type="number" id="sellPrice" min="1" value="10" style="margin:0"></div>';
+      html+='<button class="btn btn-green btn-sm" onclick="doListMarket()">عرض</button>';
+      html+='</div>';
+    }
+  }
+  html+='</div>';
+  // Listings
+  html+='<div class="card"><div class="card-title">🏪 العروض المتاحة (P2P)</div>';
+  if(marketListings.length===0)html+='<div class="empty">لا توجد عروض حالياً</div>';
+  else marketListings.forEach(l=>{
+    html+='<div class="item-row">';
+    html+='<div class="item-info"><div class="item-name">'+l.qty+'× '+itemEmoji(l.item)+' '+itemName(l.item)+'</div>';
+    html+='<div class="item-desc">من: '+l.seller+'</div></div>';
+    html+='<div style="text-align:left;margin-left:8px"><div class="item-price">'+(l.pricePerUnit*l.qty)+' M</div>';
+    html+='<div style="font-size:9px;color:var(--text3)">'+l.pricePerUnit+' M/وحدة</div></div>';
+    html+='<button class="btn btn-accent btn-sm" onclick="doBuyMarket(\''+l.id+'\')"'+(l.seller===S.user?' disabled':'')+'>شراء</button>';
+    html+='</div>';
+  });
+  html+='</div>';
+  c.innerHTML=html;
+}
+function selectSellItem(item){S.sellItem=S.sellItem===item?null:item;renderTab()}
+async function doListMarket(){
+  const qty=parseInt(document.getElementById('sellQty')?.value)||1;
+  const price=parseInt(document.getElementById('sellPrice')?.value)||1;
+  const r=await api('/api/market/list','POST',{item:S.sellItem,qty,pricePerUnit:price});
+  if(r.error){toast(r.error,'error');return}
+  toast('تم العرض!','success');S.sellItem=null;pollPlayer();loadMarket();
+}
+async function doBuyMarket(id){const r=await api('/api/market/buy','POST',{listingId:id});if(r.error){toast(r.error,'error');return}toast('تم الشراء!','success');pollPlayer();loadMarket()}
+
+// ========== INVENTORY ==========
+function renderInventory(c,d){
+  const inv=d.inventory||{};const used=invUsed(inv);const cap=invCap(d.invLevel||1);
+  const pct=cap>0?used/cap*100:0;
+  let html='<div class="card"><div class="card-title">📦 المخزون</div>';
+  html+='<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px">السعة: '+used+'/'+cap+'</span><span style="font-size:10px;color:var(--text3)">مستوى '+(d.invLevel||1)+'</span></div>';
+  html+='<div class="bar"><div class="bar-fill" style="width:'+pct+'%;background:'+(pct>80?'var(--red)':'var(--accent)')+'"></div></div>';
+  // Upgrade
+  const next=INV_UP.find(u=>u.l===(d.invLevel||1)+1);
+  if(next){
+    html+='<div style="margin-top:10px;padding:8px 10px;background:rgba(155,89,182,0.1);border-radius:8px;border:1px solid rgba(155,89,182,0.2)">';
+    html+='<div style="font-size:11px;color:var(--purple);font-weight:600;margin-bottom:4px">ترقية → سعة '+next.cap+' 📦</div>';
+    html+='<button class="btn btn-purple btn-sm" onclick="doUpgradeInv()"'+(d.msdk<next.cost?' disabled':'')+'>ترقية — '+next.cost.toLocaleString()+' MSDK</button>';
+    html+='</div>';
+  }
+  // Items
+  if(Object.keys(inv).length===0)html+='<div class="empty" style="margin-top:12px">المخزون فارغ</div>';
+  else{
+    html+='<div class="grid-2" style="margin-top:10px">';
+    for(const item in inv){
+      html+='<div class="inv-item"><div class="inv-item-emoji">'+itemEmoji(item)+'</div>';
+      html+='<div class="inv-item-name">'+itemName(item)+'</div>';
+      html+='<div class="inv-item-qty">×'+inv[item]+'</div></div>';
+    }
+    html+='</div>';
+  }
+  html+='</div>';
+  c.innerHTML=html;
+}
+async function doUpgradeInv(){const r=await api('/api/upgrade-inventory','POST',{});if(r.error){toast(r.error,'error');return}toast('تم ترقية المخزون! 📦','success');pollPlayer()}
+
+// ========== STORE ==========
+function renderStore(c,d){
+  let html='<div class="card"><div class="card-title">⭐ متجر المميزات</div>';
+  html+='<div class="note">اشترِ مميزات تساعدك في الزراعة تلقائياً!</div>';
+  PREMIUM.forEach(p=>{
+    const owned=d.premiumFeatures&&d.premiumFeatures[p.id];
+    html+='<div class="item-row'+(owned?' owned':'')+'">';
+    html+='<span class="item-emoji">'+p.emoji+'</span>';
+    html+='<div class="item-info"><div class="item-name">'+p.name+'</div>';
+    html+='<div class="item-desc">'+p.desc+'</div></div>';
+    html+='<div class="item-actions">';
+    if(owned)html+='<span style="font-size:10px;color:var(--green);font-weight:700">مفعّل ✅</span>';
+    else html+='<button class="btn btn-gold btn-sm" onclick="doBuyPremium(\''+p.id+'\')"'+(d.msdk<p.cost?' disabled':'')+'>'+p.cost+' M</button>';
+    html+='</div></div>';
+  });
+  html+='</div>';
+  c.innerHTML=html;
+}
+async function doBuyPremium(id){const r=await api('/api/buy-premium','POST',{featureId:id});if(r.error){toast(r.error,'error');return}toast('تم التفعيل! ⭐','success');pollPlayer()}
+
+// ========== TOPUP ==========
+function renderTopup(c,d){
+  let html='<div class="card"><div class="card-title">💰 شحن MSDK عبر العملات الرقمية</div>';
+  html+='<div class="note">1 MSDK داخل اللعبة = 1 MSDK خارج اللعبة. أرسل المبلغ لأحد العناوين ثم أدخل TX Hash.</div>';
+  const wallets=[
+    {name:'USDT (TRC20)',addr:'TXxxxxxxxxxxxxxxxxxxxxxxxxxxx',color:'var(--green)'},
+    {name:'BTC',addr:'bc1qxxxxxxxxxxxxxxxxxxxxxxxxxx',color:'var(--orange)'},
+    {name:'ETH',addr:'0xXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',color:'var(--blue)'},
+  ];
+  wallets.forEach(w=>{
+    html+='<div class="wallet-box" style="border:1px solid '+w.color+'33"><div class="wallet-name" style="color:'+w.color+'">'+w.name+'</div>';
+    html+='<div class="wallet-addr">'+w.addr+'</div></div>';
+  });
+  html+='<input type="number" id="topupAmt" placeholder="المبلغ بالـ MSDK">';
+  html+='<select id="topupCur"><option value="USDT_TRC20">USDT (TRC20)</option><option value="BTC">BTC</option><option value="ETH">ETH</option></select>';
+  html+='<input id="topupTx" placeholder="TX Hash أو إثبات الدفع" style="direction:ltr">';
+  html+='<button class="btn btn-gold btn-full" onclick="doTopup()">إرسال طلب الشحن 📤</button>';
+  html+='</div>';
+  // History
+  const hist=(d._topups||[]);
+  if(hist.length>0){
+    html+='<div class="card"><div class="card-title">📋 سجل طلباتك</div>';
+    hist.forEach(h=>{
+      html+='<div class="history-item"><div><div style="font-size:12px;font-weight:700">'+h.amount+' MSDK</div>';
+      html+='<div style="font-size:9px;color:var(--text3)">'+new Date(h.requestedAt).toLocaleDateString('ar')+'</div></div>';
+      html+='<span class="status-badge status-'+h.status+'">'+(h.status==='approved'?'مقبول ✅':h.status==='rejected'?'مرفوض ❌':'قيد المراجعة ⏳')+'</span></div>';
+    });
+    html+='</div>';
+  }
+  c.innerHTML=html;
+}
+async function doTopup(){
+  const amt=parseInt(document.getElementById('topupAmt')?.value);
+  const cur=document.getElementById('topupCur')?.value;
+  const tx=document.getElementById('topupTx')?.value?.trim();
+  if(!amt||amt<1){toast('أدخل مبلغ صالح','error');return}
+  if(!tx){toast('أدخل TX Hash','error');return}
+  const r=await api('/api/topup/create','POST',{amount:amt,currency:cur,txHash:tx});
+  if(r.error){toast(r.error,'error');return}
+  toast('تم إرسال الطلب!','success');pollPlayer();
+}
+
+// ========== WITHDRAW ==========
+function renderWithdraw(c,d){
+  let html='<div class="card"><div class="card-title">💸 سحب MSDK</div>';
+  html+='<div style="text-align:center;margin-bottom:10px"><div style="font-size:10px;color:var(--text3)">رصيدك الحالي</div>';
+  html+='<div style="font-size:24px;font-weight:700;color:var(--accent)">'+(d.msdk||0).toLocaleString()+' MSDK</div></div>';
+  html+='<input type="number" id="wdAmt" placeholder="المبلغ (الحد الأدنى 100 MSDK)" min="100">';
+  html+='<input id="wdWallet" placeholder="عنوان المحفظة" style="direction:ltr">';
+  html+='<select id="wdCur"><option value="USDT_TRC20">USDT (TRC20)</option><option value="BTC">BTC</option><option value="ETH">ETH</option></select>';
+  html+='<button class="btn btn-red btn-full" onclick="doWithdraw()">طلب سحب 💸</button>';
+  html+='</div>';
+  c.innerHTML=html;
+  // Load history
+  loadWithdrawHistory(c);
+}
+async function loadWithdrawHistory(c){
+  const r=await api('/api/withdraw/history');
+  if(!Array.isArray(r)||r.length===0)return;
+  let html=c.innerHTML;
+  html+='<div class="card"><div class="card-title">📋 سجل السحب</div>';
+  r.forEach(h=>{
+    html+='<div class="history-item"><div><div style="font-size:12px;font-weight:700">'+h.amount+' MSDK</div>';
+    html+='<div style="font-size:9px;color:var(--text3)">'+h.currency+' → '+h.walletAddress.substring(0,12)+'...</div></div>';
+    html+='<span class="status-badge status-'+h.status+'">'+(h.status==='approved'?'مقبول ✅':h.status==='rejected'?'مرفوض ❌':'قيد المراجعة ⏳')+'</span></div>';
+  });
+  html+='</div>';
+  c.innerHTML=html;
+}
+async function doWithdraw(){
+  const amt=parseInt(document.getElementById('wdAmt')?.value);
+  const wallet=document.getElementById('wdWallet')?.value?.trim();
+  const cur=document.getElementById('wdCur')?.value;
+  if(!amt||amt<100){toast('الحد الأدنى 100 MSDK','error');return}
+  if(!wallet){toast('أدخل عنوان المحفظة','error');return}
+  const r=await api('/api/withdraw/request','POST',{amount:amt,walletAddress:wallet,currency:cur});
+  if(r.error){toast(r.error,'error');return}
+  toast('تم إرسال طلب السحب!','success');pollPlayer();
+}
+
+// ========== CHAT ==========
+let chatMsgs=[];
+async function loadChat(){const r=await api('/api/chat/messages');if(Array.isArray(r))chatMsgs=r;renderTab()}
+function renderChat(c,d){
+  let html='<div class="card" style="display:flex;flex-direction:column;min-height:350px">';
+  html+='<div class="card-title">💬 الدردشة العامة</div>';
+  html+='<div class="chat-messages" id="chatMsgs">';
+  if(chatMsgs.length===0)html+='<div class="empty">لا توجد رسائل بعد</div>';
+  else chatMsgs.forEach(m=>{
+    html+='<div class="chat-msg"><div class="chat-user">'+m.username+'</div>';
+    html+='<div class="chat-text">'+escHtml(m.message)+'</div>';
+    html+='<div class="chat-time">'+new Date(m.timestamp).toLocaleTimeString('ar')+'</div></div>';
+  });
+  html+='</div>';
+  html+='<div class="chat-input-row"><input id="chatInput" placeholder="اكتب رسالة..." onkeydown="if(event.key===\'Enter\')doSendChat()">';
+  html+='<button class="btn btn-accent btn-sm" onclick="doSendChat()">إرسال</button></div>';
+  html+='</div>';
+  c.innerHTML=html;
+  const el=document.getElementById('chatMsgs');if(el)el.scrollTop=el.scrollHeight;
+}
+function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+async function doSendChat(){
+  const input=document.getElementById('chatInput');
+  const msg=input?.value?.trim();if(!msg)return;
+  input.value='';
+  const r=await api('/api/chat/send','POST',{message:msg});
+  if(r.error){toast(r.error,'error');return}
+  loadChat();
+}
+
+// ========== ADMIN ==========
+function renderAdmin(c,d){
+  if(S.user!=='MSDK'){c.innerHTML='<div class="empty">غير مصرح</div>';return}
+  let html='<div class="card"><div class="card-title" style="color:var(--gold)">👑 لوحة الإدارة</div>';
+  html+='<div class="admin-tabs">';
+  ['stats','topups','withdrawals','grant','players'].forEach(t=>{
+    const labels={stats:'إحصائيات',topups:'طلبات الشحن',withdrawals:'طلبات السحب',grant:'منح MSDK',players:'اللاعبون'};
+    html+='<div class="admin-tab'+(S.adminTab===t?' active':'')+'" onclick="S.adminTab=\''+t+'\';renderTab()">'+labels[t]+'</div>';
+  });
+  html+='</div><div id="adminContent"></div></div>';
+  c.innerHTML=html;
+  loadAdminContent();
+}
+async function loadAdminContent(){
+  const el=document.getElementById('adminContent');if(!el)return;
+  if(S.adminTab==='stats'){
+    const r=await api('/api/admin/stats');
+    if(r.error){el.innerHTML='<div class="empty">'+r.error+'</div>';return}
+    el.innerHTML='<div class="stat-grid">'+
+      '<div class="stat-box"><div class="stat-label">إجمالي اللاعبين</div><div class="stat-value" style="color:var(--accent)">'+(r.totalPlayers||0)+'</div></div>'+
+      '<div class="stat-box"><div class="stat-label">متصلون</div><div class="stat-value" style="color:var(--green)">'+(r.onlinePlayers||0)+'</div></div>'+
+      '<div class="stat-box"><div class="stat-label">شحن معلق</div><div class="stat-value" style="color:var(--orange)">'+(r.pendingTopups||0)+'</div></div>'+
+      '<div class="stat-box"><div class="stat-label">سحب معلق</div><div class="stat-value" style="color:var(--red)">'+(r.pendingWithdrawals||0)+'</div></div></div>';
+  }
+  else if(S.adminTab==='topups'){
+    const r=await api('/api/admin/topups');
+    if(!Array.isArray(r)){el.innerHTML='<div class="empty">لا توجد طلبات</div>';return}
+    let h='';
+    r.forEach(t=>{
+      h+='<div class="item-row"><div class="item-info"><div class="item-name">'+t.username+' — '+t.amount+' MSDK</div>';
+      h+='<div class="item-desc" style="font-family:monospace;direction:ltr">TX: '+(t.txHash||'').substring(0,20)+'...</div></div>';
+      h+='<div class="item-actions">';
+      if(t.status==='pending'){
+        h+='<button class="btn btn-green btn-sm" onclick="doAdminTopup(\''+t.id+'\',true)">قبول</button>';
+        h+='<button class="btn btn-red btn-sm" onclick="doAdminTopup(\''+t.id+'\',false)">رفض</button>';
+      }else h+='<span class="status-badge status-'+t.status+'">'+(t.status==='approved'?'مقبول':'مرفوض')+'</span>';
+      h+='</div></div>';
+    });
+    el.innerHTML=h||'<div class="empty">لا توجد طلبات</div>';
+  }
+  else if(S.adminTab==='withdrawals'){
+    const r=await api('/api/admin/withdrawals');
+    if(!Array.isArray(r)){el.innerHTML='<div class="empty">لا توجد طلبات</div>';return}
+    let h='';
+    r.forEach(w=>{
+      h+='<div class="item-row"><div class="item-info"><div class="item-name">'+w.username+' — '+w.amount+' MSDK</div>';
+      h+='<div class="item-desc">'+w.currency+' → '+w.walletAddress+'</div></div>';
+      h+='<div class="item-actions">';
+      if(w.status==='pending'){
+        h+='<button class="btn btn-green btn-sm" onclick="doAdminWithdraw(\''+w.id+'\',true)">قبول</button>';
+        h+='<button class="btn btn-red btn-sm" onclick="doAdminWithdraw(\''+w.id+'\',false)">رفض</button>';
+      }else h+='<span class="status-badge status-'+w.status+'">'+(w.status==='approved'?'مقبول':'مرفوض')+'</span>';
+      h+='</div></div>';
+    });
+    el.innerHTML=h||'<div class="empty">لا توجد طلبات</div>';
+  }
+  else if(S.adminTab==='grant'){
+    el.innerHTML='<input id="grantUser" placeholder="اسم المستخدم">'+
+      '<input type="number" id="grantAmt" placeholder="المبلغ">'+
+      '<button class="btn btn-gold btn-full" onclick="doAdminGrant()">منح MSDK 💰</button>';
+  }
+  else if(S.adminTab==='players'){
+    const r=await api('/api/admin/players');
+    if(!Array.isArray(r)){el.innerHTML='<div class="empty">لا يوجد لاعبون</div>';return}
+    let h='';
+    r.forEach(p=>{
+      h+='<div class="player-row"><div class="online-dot" style="background:'+(p.online?'var(--green)':'var(--text3)')+'"></div>';
+      h+='<span style="font-size:11px;flex:1">'+p.username+(p.username==='MSDK'?' 👑':'')+'</span>';
+      h+='<span style="font-size:10px;color:var(--gold)">'+p.msdk+' M</span>';
+      h+='<span style="font-size:10px;color:var(--text3);margin-right:8px">Lv.'+p.level+'</span></div>';
+    });
+    el.innerHTML=h;
+  }
+}
+async function doAdminTopup(id,approve){
+  const url=approve?'/api/admin/topup/approve':'/api/admin/topup/reject';
+  const r=await api(url,'POST',{topupId:id});
+  if(r.error){toast(r.error,'error');return}
+  toast(approve?'تمت الموافقة!':'تم الرفض','success');loadAdminContent();
+}
+async function doAdminWithdraw(id,approve){
+  const url=approve?'/api/admin/withdraw/approve':'/api/admin/withdraw/reject';
+  const r=await api(url,'POST',{withdrawId:id});
+  if(r.error){toast(r.error,'error');return}
+  toast(approve?'تمت الموافقة!':'تم الرفض','success');loadAdminContent();
+}
+async function doAdminGrant(){
+  const user=document.getElementById('grantUser')?.value?.trim();
+  const amt=parseInt(document.getElementById('grantAmt')?.value);
+  if(!user||!amt){toast('أدخل اسم المستخدم والمبلغ','error');return}
+  const r=await api('/api/admin/grant','POST',{username:user,amount:amt});
+  if(r.error){toast(r.error,'error');return}
+  toast('تم منح '+amt+' MSDK لـ '+user,'success');
+}
+</script>
+</body>
+</html>
