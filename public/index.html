@@ -1,923 +1,2425 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>MSDK Farm</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>MSDK Farm - مزرعة العملة الرقمية</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a1628;--card:#0f2035;--border:#1a3a5c;--accent:#00d4aa;--gold:#f5c542;--red:#ff4757;--orange:#ff9f43;--green:#2ecc71;--purple:#9b59b6;--blue:#3498db;--text:#e8f0fe;--text2:#8899aa;--text3:#556677}
-html,body{width:100%;height:100%;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text)}
-body{display:flex;justify-content:center;padding:0}
-#app{width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--bg),#0d1f35,var(--bg));position:relative;overflow:hidden}
-.screen{display:none;flex-direction:column;flex:1}
-.screen.active{display:flex}
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family:'Cairo',sans-serif; margin:0; padding:0; background:#1a3a1a; color:#fff;
+         overflow:hidden; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
+  button { font-family:inherit; }
+  .world { position:relative; width:100vw; height:100vh; overflow:hidden;
+           background:radial-gradient(ellipse at center,#5a8c3a 0%,#3e6b25 60%,#2d4a1a 100%); }
+  .scene { position:absolute; top:50%; left:50%; transform-origin:0 0; }
+  .ground {
+    position:relative;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 56px),
+      repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 56px),
+      linear-gradient(135deg,#7cb342 0%,#689f38 50%,#558b2f 100%);
+    border:6px solid #4e342e; border-radius:14px;
+    box-shadow:inset 0 0 80px rgba(0,0,0,0.25), 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .cell { position:absolute; box-sizing:border-box; }
+  .cell.ok  { background:rgba(0,255,0,0.25); border:2px dashed #1b5e20; border-radius:8px; cursor:pointer; }
+  .cell.bad { background:rgba(255,0,0,0.3);  border:2px dashed #b71c1c; border-radius:8px; }
+  .bld {
+    position:absolute; display:flex; flex-direction:column; align-items:center;
+    justify-content:flex-end; cursor:pointer; transition:transform 0.15s; z-index:5;
+  }
+  .bld:hover { transform:translateY(-2px) scale(1.04); z-index:10; }
+  .bld-art { font-size:38px; line-height:1;
+             filter:drop-shadow(2px 4px 4px rgba(0,0,0,0.5)); text-align:center; }
+  .bld-base { width:90%; height:8px; background:rgba(0,0,0,0.35);
+              border-radius:50%; margin-top:-4px; filter:blur(2px); }
+  .lvl-tag { position:absolute; top:-4px; left:-4px;
+             background:linear-gradient(135deg,#ff9800,#e65100);
+             color:#fff; font-weight:900; font-size:11px;
+             padding:2px 6px; border-radius:8px; border:2px solid #fff;
+             box-shadow:0 2px 4px rgba(0,0,0,0.4); }
+  .ready-bubble { position:absolute; top:-22px; left:50%; transform:translateX(-50%);
+                  background:linear-gradient(135deg,#ffeb3b,#ffc107);
+                  color:#4e342e; font-weight:900; font-size:11px;
+                  padding:3px 10px; border-radius:14px; border:2px solid #fff;
+                  box-shadow:0 3px 8px rgba(0,0,0,0.4);
+                  animation:bob 1.2s ease-in-out infinite; white-space:nowrap; }
+  @keyframes bob { 0%,100%{transform:translateX(-50%) translateY(0);} 50%{transform:translateX(-50%) translateY(-4px);} }
+  @keyframes ringPulse {
+    0%,100% { box-shadow: 0 0 0 0 #ffeb3b; opacity: 1; }
+    50%     { box-shadow: 0 0 0 4px rgba(255,235,59,0.4); opacity: 0.85; }
+  }
+  .plot-empty {
+    background-image:
+      repeating-linear-gradient(45deg, rgba(0,0,0,0.1) 0 4px, transparent 4px 12px),
+      linear-gradient(135deg,#6d4c41 0%,#8d6e63 100%);
+    border:3px solid #4e342e; border-radius:8px;
+    box-shadow:inset 0 -6px 12px rgba(0,0,0,0.3);
+  }
+  .plot-growing { background:linear-gradient(135deg,#689f38 0%,#8bc34a 100%);
+                  border:3px solid #33691e; border-radius:8px; }
+  .plot-ready { background:linear-gradient(135deg,#fdd835 0%,#fbc02d 100%);
+                border:3px solid #f57f17; border-radius:8px; animation:glow 1.4s infinite; }
+  .plot-dead { background:linear-gradient(135deg,#5d4037,#3e2723);
+               border:3px solid #1b0000; border-radius:8px; opacity:0.7; }
+  @keyframes glow { 0%,100%{box-shadow:0 0 8px #fff176;}
+                    50%{box-shadow:0 0 22px #ffeb3b,0 0 32px #ffc107;} }
 
-/* Login */
-.login-screen{align-items:center;justify-content:center;padding:20px}
-.logo{font-size:42px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--accent),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.logo-sub{font-size:10px;color:var(--text3);letter-spacing:3px;margin-top:4px}
-.auth-card{width:100%;max-width:300px;margin-top:24px}
+  .topbar { position:fixed; top:0; left:0; right:0; padding:6px 10px;
+            background:linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+            z-index:100; display:flex; justify-content:space-between;
+            align-items:center; gap:6px; flex-wrap:wrap; pointer-events:none; }
+  .topbar > * { pointer-events:auto; }
+  .stat-pill { background:linear-gradient(180deg,#fff8e1,#ffe082);
+               border:2px solid #f9a825; border-radius:14px;
+               padding:3px 10px; font-weight:900; color:#4e342e;
+               box-shadow:0 4px 8px rgba(0,0,0,0.4);
+               display:inline-flex; align-items:center; gap:4px; font-size:13px; }
+  .stat-th { background:linear-gradient(180deg,#e1bee7,#9c27b0); color:#fff; border-color:#4a148c; }
+  .stat-xp { background:linear-gradient(180deg,#b3e5fc,#0288d1); color:#fff; border-color:#01579b; }
+  .stat-inv{ background:linear-gradient(180deg,#ffcc80,#e65100); color:#fff; border-color:#bf360c; }
+  .icon-btn { width:42px; height:42px; border-radius:12px;
+              background:linear-gradient(180deg,#ff9800,#e65100); color:#fff;
+              border:3px solid #bf360c; font-size:18px; display:flex;
+              align-items:center; justify-content:center; cursor:pointer;
+              box-shadow:0 4px 8px rgba(0,0,0,0.4); padding:0; }
+  .icon-btn:active { transform:translateY(2px); box-shadow:0 2px 4px rgba(0,0,0,0.4); }
+  .panel { position:fixed; bottom:0; left:0; right:0;
+           background:linear-gradient(180deg,#6d4c41,#3e2723);
+           border-top:4px solid #ffc107; padding:10px 10px 16px;
+           z-index:200; max-height:78vh; overflow-y:auto;
+           box-shadow:0 -8px 24px rgba(0,0,0,0.5); }
+  .panel h3 { margin:0 0 6px 0; color:#ffeb3b; font-size:16px; }
+  .panel-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .panel-tab { padding:5px 10px; border-radius:10px; border:2px solid #fff;
+               background:rgba(255,255,255,0.15); color:#fff; font-weight:900;
+               cursor:pointer; font-size:12px; }
+  .panel-tab.active { background:#ffc107; color:#4e342e; border-color:#fff; }
+  .panel-grid { display:grid;
+                grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:6px; }
+  .build-card { background:linear-gradient(180deg,#efebe9,#d7ccc8);
+                border:3px solid #5d4037; border-radius:10px;
+                padding:6px; text-align:center; color:#3e2723;
+                cursor:pointer; transition:all 0.15s; position:relative; }
+  .build-card:active { transform:scale(0.95); }
+  .build-card.locked { opacity:0.45; filter:grayscale(80%); cursor:not-allowed; }
+  .build-card .e { font-size:30px; line-height:1; }
+  .build-card .n { font-size:12px; font-weight:900; margin-top:3px; }
+  .build-card .c { font-size:10px; margin-top:2px; color:#4e342e; }
+  .build-card .own { position:absolute; top:3px; left:3px;
+                     background:#2e7d32; color:#fff; font-size:10px; font-weight:900;
+                     padding:1px 5px; border-radius:6px; border:1px solid #fff; }
+  .close-x { position:absolute; top:6px; left:6px; width:28px; height:28px;
+             border-radius:50%; background:#f44336; color:#fff;
+             border:2px solid #b71c1c; cursor:pointer; font-weight:900;
+             font-size:14px; display:flex; align-items:center;
+             justify-content:center; padding:0; z-index:5; }
+  .bld-menu { position:fixed; left:50%; transform:translateX(-50%); bottom:8px;
+              z-index:300; background:linear-gradient(180deg,#fff8e1,#ffe082);
+              border:4px solid #ff8f00; border-radius:18px; padding:10px 14px;
+              color:#4e342e; box-shadow:0 8px 30px rgba(0,0,0,0.6);
+              min-width:280px; max-width:95vw; text-align:center; }
+  .bld-menu h4 { margin:0 0 6px 0; font-size:15px; }
+  .bld-menu .row { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; }
+  .menu-btn { padding:6px 10px; border-radius:10px; font-weight:900;
+              border:3px solid; cursor:pointer; font-size:12px; }
+  .mb-up { background:linear-gradient(180deg,#4caf50,#2e7d32); color:#fff; border-color:#1b5e20; }
+  .mb-mv { background:linear-gradient(180deg,#2196f3,#1565c0); color:#fff; border-color:#0d47a1; }
+  .mb-rm { background:linear-gradient(180deg,#f44336,#c62828); color:#fff; border-color:#b71c1c; }
+  .mb-cl { background:linear-gradient(180deg,#ffc107,#ff8f00); color:#4e342e; border-color:#e65100; }
+  .mb-water { background:linear-gradient(180deg,#29b6f6,#01579b); color:#fff; border-color:#01579b; }
+  .mb-fert { background:linear-gradient(180deg,#8d6e63,#3e2723); color:#fff; border-color:#3e2723; }
+  .menu-btn:disabled { opacity:0.5; cursor:not-allowed; }
 
-/* Cards */
-.card{background:rgba(15,32,53,0.92);border-radius:14px;border:1px solid var(--border);padding:12px;backdrop-filter:blur(12px);margin-bottom:10px}
-.card-title{font-size:14px;font-weight:700;color:var(--accent);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+  .fly { position:fixed; pointer-events:none; z-index:9999;
+         font-weight:900; font-size:20px;
+         text-shadow:2px 2px 0 #4e342e, -1px -1px 0 #4e342e;
+         animation:fly-up 1.1s ease-out forwards; }
+  @keyframes fly-up { 0%{transform:translateY(0) scale(1);opacity:1;}
+                      100%{transform:translateY(-90px) scale(1.6);opacity:0;} }
+  .toast { position:fixed; top:60px; left:50%; transform:translateX(-50%);
+           background:rgba(0,0,0,0.85); color:#fff;
+           padding:8px 16px; border-radius:12px; font-weight:900;
+           z-index:9999; border:2px solid #ffc107;
+           box-shadow:0 4px 16px rgba(0,0,0,0.5);
+           animation:pop 0.3s; max-width:90vw; text-align:center; font-size:13px; }
+  @keyframes pop { from{transform:translate(-50%,-20px);opacity:0;}
+                   to{transform:translate(-50%,0);opacity:1;} }
+  .placing-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.3);
+                     z-index:90; pointer-events:none; }
+  .place-banner { position:fixed; top:60px; left:50%; transform:translateX(-50%);
+                  background:linear-gradient(180deg,#ffc107,#ff6f00);
+                  border:3px solid #fff; border-radius:14px;
+                  padding:6px 12px; color:#fff; font-weight:900;
+                  z-index:250; text-align:center;
+                  box-shadow:0 4px 12px rgba(0,0,0,0.5);
+                  display:flex; align-items:center; gap:8px;
+                  flex-wrap:wrap; justify-content:center; font-size:13px; }
 
-/* Inputs */
-input,select{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--text);font-size:13px;outline:none;font-family:inherit;margin-bottom:8px}
-input:focus{border-color:var(--accent)}
+  .modal { position:fixed; inset:0; z-index:400;
+           background:rgba(0,0,0,0.7); display:flex;
+           align-items:center; justify-content:center; padding:10px; }
+  .modal-box { background:linear-gradient(180deg,#fff8e1,#ffe082);
+               border:4px solid #ff8f00; border-radius:18px; padding:14px;
+               color:#4e342e; max-width:480px; width:100%;
+               max-height:85vh; overflow-y:auto; position:relative; }
 
-/* Buttons */
-.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;color:#fff;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;gap:4px}
-.btn-accent{background:linear-gradient(135deg,var(--accent),#00a885)}
-.btn-gold{background:linear-gradient(135deg,var(--gold),#d4a030)}
-.btn-red{background:linear-gradient(135deg,var(--red),#c0392b)}
-.btn-green{background:linear-gradient(135deg,var(--green),#27ae60)}
-.btn-purple{background:linear-gradient(135deg,var(--purple),#8e44ad)}
-.btn-blue{background:linear-gradient(135deg,var(--blue),#2980b9)}
-.btn-full{width:100%}
-.btn-sm{padding:5px 10px;font-size:10px}
-.btn:disabled{opacity:0.4;cursor:not-allowed}
+  .seed-row { display:flex; align-items:center; gap:8px;
+              background:#fff; border-radius:10px; padding:6px;
+              margin-bottom:5px; border:2px solid #d7ccc8; }
+  .seed-row .sub { font-size:11px; color:#4e342e; }
+  .pill { display:inline-block; padding:1px 6px; border-radius:8px;
+          font-size:10px; font-weight:900; margin:0 1px; }
+  .pill-have { background:#c8e6c9; color:#1b5e20; }
+  .pill-time { background:#bbdefb; color:#0d47a1; }
+  .pill-cost { background:#ffe0b2; color:#bf360c; }
 
-/* Top bar */
-.top-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 12px}
-.balance{display:flex;align-items:center;gap:4px;font-size:14px;font-weight:700;color:var(--accent)}
-.user-info{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2)}
-.logout{color:var(--red);cursor:pointer;font-size:10px}
+  .login-screen {
+    position:fixed; inset:0;
+    background:linear-gradient(135deg,#1b5e20 0%, #2e7d32 50%, #ffa000 100%);
+    display:flex; align-items:center; justify-content:center;
+    z-index:1000; padding:20px;
+  }
+  .login-card {
+    background:linear-gradient(180deg,#fff8e1,#ffe082);
+    border:5px solid #ff8f00; border-radius:24px; padding:24px;
+    max-width:420px; width:100%; color:#4e342e; text-align:center;
+    box-shadow:0 12px 40px rgba(0,0,0,0.6);
+  }
+  .login-card h1 { font-size:28px; margin:0 0 6px 0; color:#bf360c; }
+  .login-card p { margin:0 0 14px 0; font-size:13px; }
+  .login-btn {
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    width:100%; padding:12px; margin-bottom:8px;
+    border-radius:14px; font-weight:900; font-size:15px;
+    cursor:pointer; border:3px solid; transition:transform 0.15s;
+  }
+  .login-btn:active { transform:scale(0.97); }
+  .login-google { background:#fff; color:#444; border-color:#dadce0; }
+  .login-meta { background:linear-gradient(135deg,#f6851b,#e2761b); color:#fff; border-color:#cd6116; }
+  .login-guest { background:linear-gradient(180deg,#4caf50,#2e7d32); color:#fff; border-color:#1b5e20; }
+  .login-admin { background:linear-gradient(180deg,#9c27b0,#4a148c); color:#fff; border-color:#4a148c; font-size:12px; padding:8px; }
 
-/* Level bar */
-.level-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.3);border-radius:10px;margin:0 12px 6px}
-.level-circle{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--orange));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#000;flex-shrink:0}
-.level-info{flex:1;min-width:0}
-.level-row{display:flex;justify-content:space-between;margin-bottom:3px}
-.level-title{font-size:10px;color:var(--gold);font-weight:600}
-.xp-text{font-size:9px;color:var(--text3)}
+  .stand-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; max-width:380px; margin:0 auto; }
+  .stand-slot {
+    aspect-ratio:1/1;
+    background:linear-gradient(180deg,#a1887f,#5d4037);
+    border:3px dashed #efebe9; border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; cursor:pointer; padding:6px; font-size:11px; text-align:center;
+    position:relative;
+  }
+  .stand-slot.has { background:linear-gradient(180deg,#fff,#fafafa); color:#3e2723; border:3px solid #ff8f00; border-style:solid; }
+  .stand-slot.sold { background:linear-gradient(180deg,#fff59d,#ffd54f); color:#bf360c; border:3px solid #4caf50; border-style:solid; }
+  .stand-slot .se { font-size:30px; }
+  .stand-slot .sn { font-weight:900; font-size:12px; }
+  .stand-slot .sp { font-size:11px; }
 
-/* Progress bar */
-.bar{width:100%;height:5px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden}
-.bar-fill{height:100%;border-radius:3px;transition:width 0.5s}
+  .order-row {
+    display:grid; grid-template-columns:auto 1fr auto auto;
+    gap:8px; align-items:center;
+    background:#fff; padding:6px; border-radius:8px;
+    margin-bottom:4px; color:#3e2723; border:1px solid #d7ccc8; font-size:12px;
+  }
+  .chat-msg { background:rgba(255,255,255,0.95); color:#3e2723;
+              padding:6px 10px; margin:4px 0; border-radius:10px; font-size:13px; }
+  .chat-msg .u { font-weight:900; color:#bf360c; }
+  .chat-msg.me { background:#fff59d; }
+  .chat-msg.bot { background:#e1f5fe; }
 
-/* Tabs */
-.tabs{display:flex;gap:0;padding:0 8px;overflow-x:auto;flex-shrink:0;-webkit-overflow-scrolling:touch}
-.tabs::-webkit-scrollbar{display:none}
-.tab{padding:7px 10px;cursor:pointer;font-size:10px;font-weight:400;color:var(--text3);border-bottom:2px solid transparent;white-space:nowrap;transition:all 0.2s;flex-shrink:0}
-.tab.active{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+  .input { padding:8px; border-radius:10px; border:2px solid #d7ccc8; font-size:13px;
+           font-family:inherit; width:100%; }
+  .input:focus { outline:none; border-color:#ff8f00; }
 
-/* Content */
-.content{flex:1;overflow-y:auto;padding:10px 12px;-webkit-overflow-scrolling:touch}
-.content::-webkit-scrollbar{width:3px}
-.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-
-/* Grid */
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-
-/* Plot */
-.plot{background:rgba(0,0,0,0.3);border-radius:10px;padding:10px;text-align:center;border:1px solid rgba(26,58,92,0.3)}
-.plot.ready{border-color:rgba(46,204,113,0.5);box-shadow:0 0 8px rgba(46,204,113,0.15)}
-.plot-emoji{font-size:28px;margin-bottom:4px}
-.plot-name{font-size:11px;font-weight:600;margin-bottom:4px}
-.plot-time{font-size:9px;color:var(--text3);margin-top:3px}
-.plot-btns{display:flex;gap:4px;margin-top:6px;justify-content:center}
-
-/* Item row */
-.item-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(0,0,0,0.3);border-radius:10px;margin-bottom:6px;border:1px solid rgba(26,58,92,0.3)}
-.item-row.locked{opacity:0.5}
-.item-row.owned{border-color:rgba(46,204,113,0.3)}
-.item-emoji{font-size:28px;flex-shrink:0}
-.item-info{flex:1;min-width:0}
-.item-name{font-size:12px;font-weight:700}
-.item-desc{font-size:10px;color:var(--text3);margin-top:2px}
-.item-price{font-size:12px;font-weight:700;color:var(--gold)}
-.item-actions{flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
-
-/* Pen animals display */
-.pen-animals{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0}
-.pen-animal{font-size:18px;padding:3px;border-radius:5px;background:rgba(0,0,0,0.2);border:1px solid transparent}
-.pen-animal.ready{background:rgba(46,204,113,0.15);border-color:rgba(46,204,113,0.4)}
-
-/* Factory */
-.factory-status{margin-top:6px}
-
-/* Market chips */
-.inv-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
-.inv-chip{padding:5px 10px;border-radius:8px;cursor:pointer;background:rgba(0,0,0,0.3);border:1px solid rgba(26,58,92,0.3);font-size:11px;transition:all 0.2s}
-.inv-chip.selected{background:rgba(0,212,170,0.15);border-color:var(--accent)}
-
-/* Inventory grid */
-.inv-item{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;text-align:center;border:1px solid rgba(26,58,92,0.3)}
-.inv-item-emoji{font-size:22px}
-.inv-item-name{font-size:10px;margin-top:2px}
-.inv-item-qty{font-size:14px;font-weight:700;color:var(--accent)}
-
-/* Chat */
-.chat-messages{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;max-height:300px}
-.chat-msg{background:rgba(0,0,0,0.3);border-radius:8px;padding:6px 10px}
-.chat-user{font-size:10px;color:var(--accent);font-weight:600}
-.chat-text{font-size:12px;margin-top:2px}
-.chat-time{font-size:8px;color:var(--text3);margin-top:2px}
-.chat-input-row{display:flex;gap:6px;margin-top:8px}
-.chat-input-row input{margin-bottom:0;flex:1}
-
-/* Wallet box */
-.wallet-box{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px 10px;margin-bottom:6px}
-.wallet-name{font-size:11px;font-weight:700;margin-bottom:3px}
-.wallet-addr{font-size:9px;color:var(--text3);word-break:break-all;font-family:monospace;direction:ltr;text-align:left}
-
-/* History item */
-.history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(26,58,92,0.2)}
-.status-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px}
-.status-pending{color:var(--orange);background:rgba(255,159,67,0.1)}
-.status-approved{color:var(--green);background:rgba(46,204,113,0.1)}
-.status-rejected{color:var(--red);background:rgba(255,71,87,0.1)}
-
-/* Admin */
-.admin-tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
-.admin-tab{padding:5px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;background:rgba(0,0,0,0.3);color:var(--text3);border:1px solid transparent}
-.admin-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(245,197,66,0.1)}
-.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.stat-box{background:rgba(0,0,0,0.3);border-radius:8px;padding:10px;text-align:center}
-.stat-label{font-size:9px;color:var(--text3)}
-.stat-value{font-size:18px;font-weight:700;margin-top:2px}
-.player-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid rgba(26,58,92,0.2)}
-.online-dot{width:8px;height:8px;border-radius:50%}
-
-/* Modal */
-.modal{display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)}
-.modal.active{display:flex}
-.modal-box{background:var(--card);border-radius:16px;border:1px solid var(--border);padding:16px;max-width:360px;width:90%;max-height:80vh;overflow-y:auto;direction:rtl}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.modal-title{font-size:15px;font-weight:700;color:var(--accent)}
-.modal-close{cursor:pointer;font-size:18px;color:var(--text3);background:none;border:none}
-
-/* Crop option */
-.crop-option{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(0,0,0,0.3);border-radius:10px;cursor:pointer;border:1px solid rgba(26,58,92,0.3);margin-bottom:6px;transition:all 0.2s}
-.crop-option:hover{border-color:var(--accent);background:rgba(0,212,170,0.08)}
-
-/* Toast */
-.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;padding:10px 20px;border-radius:10px;color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);animation:slideDown 0.3s ease;font-family:inherit;display:none}
-.toast.show{display:block}
-@keyframes slideDown{from{transform:translate(-50%,-20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
-
-/* Empty state */
-.empty{font-size:11px;color:var(--text3);text-align:center;padding:20px}
-.note{font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.7}
+  .hud-bottom {
+    position:fixed; bottom:8px; left:8px; right:8px;
+    display:flex; gap:6px; flex-wrap:wrap; justify-content:center; z-index:100;
+    pointer-events:none;
+  }
+  .hud-bottom > * { pointer-events:auto; }
+  .hud-btn { background:linear-gradient(180deg,#fff8e1,#ffd54f);
+             border:3px solid #ff8f00; border-radius:14px;
+             padding:6px 10px; font-weight:900; color:#4e342e;
+             cursor:pointer; font-size:12px;
+             box-shadow:0 4px 8px rgba(0,0,0,0.4);
+             display:flex; align-items:center; gap:4px; }
+  .hud-btn:active { transform:translateY(2px); }
+  .hud-btn.alert { background:linear-gradient(180deg,#f44336,#c62828); color:#fff; border-color:#b71c1c; }
 </style>
 </head>
 <body>
-<div id="app">
+<div id="root"></div>
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useRef, useCallback } = React;
 
-<!-- ===== Toast ===== -->
-<div id="toast" class="toast"></div>
+/* ==================== API Layer (Backend) ==================== */
+const API = {
+  token: null,
+  socket: null,
+  setToken(t) { this.token = t; if (t) localStorage.setItem('msdk_token', t); else localStorage.removeItem('msdk_token'); },
+  loadToken() { this.token = localStorage.getItem('msdk_token'); return this.token; },
+  async req(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (this.token) opts.headers['Authorization'] = 'Bearer ' + this.token;
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch('/api'+path, opts);
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.error || 'خطأ ('+res.status+')');
+    return data;
+  },
+  // auth
+  register(name, password) { return this.req('POST', '/auth/register', { name, password }); },
+  login(name, password)    { return this.req('POST', '/auth/login',    { name, password }); },
+  me()                     { return this.req('GET',  '/auth/me'); },
+  // game state
+  loadState()              { return this.req('GET',  '/game/state'); },
+  saveState(state)         { return this.req('POST', '/game/state',   { state }); },
+  // market
+  marketList(item, sort)   { const q = new URLSearchParams({ item: item||'all', sort: sort||'priceAsc' }); return this.req('GET', '/market?'+q); },
+  marketStats()            { return this.req('GET',  '/market/stats'); },
+  marketMine()             { return this.req('GET',  '/market/mine'); },
+  listItem(item, qty, price) { return this.req('POST', '/market/list', { item, qty, price }); },
+  buyListing(id)           { return this.req('POST', '/market/buy/'+id); },
+  cancelListing(id)        { return this.req('POST', '/market/cancel/'+id); },
+  // wallet
+  wallet()                 { return this.req('GET',  '/wallet'); },
+  deposit(amount, paymentToken) { return this.req('POST', '/wallet/deposit',  { amount, paymentToken }); },
+  withdraw(amount, address)     { return this.req('POST', '/wallet/withdraw', { amount, address }); },
+  // chat
+  chatRecent()             { return this.req('GET',  '/chat/recent'); },
+  // admin
+  adminPlayers()           { return this.req('GET',  '/admin/players'); },
+  adminStats()             { return this.req('GET',  '/admin/stats'); },
+  adminLog()               { return this.req('GET',  '/admin/log'); },
+  adminTransactions()      { return this.req('GET',  '/admin/transactions'); },
+  adminAdjust(userId, amount, reason) { return this.req('POST', '/admin/adjust', { userId, amount, reason }); },
 
-<!-- ===== Login Screen ===== -->
-<div id="loginScreen" class="screen login-screen active">
-  <div class="logo">MSDK</div>
-  <div class="logo-sub">SMART FARM SIMULATOR</div>
-  <div class="auth-card">
-    <div class="card">
-      <div class="card-title" id="authTitle">تسجيل الدخول</div>
-      <input id="authUser" placeholder="اسم المستخدم" autocomplete="off">
-      <input id="authPass" type="password" placeholder="كلمة السر">
-      <button class="btn btn-accent btn-full" id="authBtn" onclick="doAuth()">دخول 🚀</button>
-      <div style="text-align:center;font-size:11px;color:var(--text2);margin-top:10px;cursor:pointer" id="authToggle" onclick="toggleAuth()">ليس لديك حساب؟ سجل الآن</div>
+  connectSocket() {
+    if (this.socket) this.socket.disconnect();
+    this.socket = io({ auth: { token: this.token } });
+    return this.socket;
+  },
+  disconnectSocket() {
+    if (this.socket) { this.socket.disconnect(); this.socket = null; }
+  },
+};
+API.loadToken();
+
+/* ==================== ثوابت اللعبة ==================== */
+const GRID_W = 18, GRID_H = 18, CELL = 56;
+const SAVE_KEY = 'msdk_farm_v4';
+const HOUR = 3600, DAY = 86400;
+
+/* أوقات واقعية: قمح يوم - وقس عليه. السقي والسماد يخفّفان البطء */
+const CROPS = {
+  wheat:      { name:'قمح',     emoji:'🌾', time: 1*DAY,    xp: 30,   unlockLevel: 1, baseValue: 25 },
+  cucumber:   { name:'خيار',    emoji:'🥒', time: 1.25*DAY, xp: 50,   unlockLevel: 2, baseValue: 45 },
+  carrot:     { name:'جزر',     emoji:'🥕', time: 1.5*DAY,  xp: 80,   unlockLevel: 3, baseValue: 70 },
+  corn:       { name:'ذرة',     emoji:'🌽', time: 1.75*DAY, xp: 110,  unlockLevel: 4, baseValue: 110 },
+  tomato:     { name:'طماطم',   emoji:'🍅', time: 2*DAY,    xp: 160,  unlockLevel: 6, baseValue: 170 },
+  pepper:     { name:'فلفل',    emoji:'🌶️', time: 2.5*DAY,  xp: 230,  unlockLevel: 8, baseValue: 260 },
+  strawberry: { name:'فراولة',  emoji:'🍓', time: 3*DAY,    xp: 320,  unlockLevel: 10, baseValue: 400 },
+  watermelon: { name:'بطيخ',    emoji:'🍉', time: 4*DAY,    xp: 500,  unlockLevel: 13, baseValue: 650 },
+  pumpkin:    { name:'يقطين',   emoji:'🎃', time: 5*DAY,    xp: 750,  unlockLevel: 16, baseValue: 1000 },
+  grape:      { name:'عنب',     emoji:'🍇', time: 7*DAY,    xp: 1200, unlockLevel: 20, baseValue: 1700 },
+};
+
+/* أنواع الحضائر - كل حيوان حضيرته الخاصة، تفتح تدريجياً (كل 5 مستويات) */
+const PEN_TYPES = {
+  chickenCoop: {
+    name:'بيت دجاج', emoji:'🐔', size:2, baseCost: 800,
+    unlockLevel: 5, animal:'chicken', baseCap: 3, capPerLevel: 2,
+    upgradeCost: lvl => Math.floor(800 * Math.pow(1.7, lvl)),
+    desc:'يأوي الدجاج. كل ترقية تزيد السعة.',
+  },
+  rabbitHutch: {
+    name:'بيت أرانب', emoji:'🐇', size:2, baseCost: 1500,
+    unlockLevel: 10, animal:'rabbit', baseCap: 4, capPerLevel: 2,
+    upgradeCost: lvl => Math.floor(1500 * Math.pow(1.75, lvl)),
+    desc:'يأوي الأرانب.',
+  },
+  sheepPen: {
+    name:'حظيرة أغنام', emoji:'🐑', size:2, baseCost: 3500,
+    unlockLevel: 15, animal:'sheep', baseCap: 3, capPerLevel: 2,
+    upgradeCost: lvl => Math.floor(3500 * Math.pow(1.8, lvl)),
+    desc:'تأوي الأغنام. ينتجن صوفاً.',
+  },
+  cowBarn: {
+    name:'حظيرة أبقار', emoji:'🐄', size:2, baseCost: 8000,
+    unlockLevel: 20, animal:'cow', baseCap: 2, capPerLevel: 1,
+    upgradeCost: lvl => Math.floor(8000 * Math.pow(1.85, lvl)),
+    desc:'تأوي الأبقار. تنتج حليباً وفيراً.',
+  },
+  pigSty: {
+    name:'حظيرة خنازير', emoji:'🐖', size:2, baseCost: 18000,
+    unlockLevel: 25, animal:'pig', baseCap: 2, capPerLevel: 1,
+    upgradeCost: lvl => Math.floor(18000 * Math.pow(1.9, lvl)),
+    desc:'تأوي الخنازير. تعطي لحماً ثميناً.',
+  },
+  goatPen: {
+    name:'حظيرة ماعز', emoji:'🐐', size:2, baseCost: 35000,
+    unlockLevel: 30, animal:'goat', baseCap: 2, capPerLevel: 1,
+    upgradeCost: lvl => Math.floor(35000 * Math.pow(1.95, lvl)),
+    desc:'تأوي الماعز. تنتج جبناً فاخراً.',
+  },
+};
+
+const ANIMALS = {
+  chicken: { name:'دجاجة', emoji:'🐔', cost: 200, produce:'بيض',  pEmoji:'🥚', pName:'egg',    cycle: 8*HOUR,  baseValue: 60,  xp: 25, sellable:true },
+  rabbit:  { name:'أرنب',  emoji:'🐇', cost: 400, produce:'فرو',  pEmoji:'🧶', pName:'fur',    cycle: 10*HOUR, baseValue: 110, xp: 40, sellable:true },
+  sheep:   { name:'خروف',  emoji:'🐑', cost: 1200,produce:'صوف',  pEmoji:'🧶', pName:'wool',   cycle: 14*HOUR, baseValue: 280, xp: 80, sellable:true },
+  cow:     { name:'بقرة',  emoji:'🐄', cost: 3500,produce:'حليب', pEmoji:'🥛', pName:'milk',   cycle: 18*HOUR, baseValue: 600, xp: 150, sellable:true },
+  pig:     { name:'خنزير', emoji:'🐖', cost: 7000,produce:'لحم',  pEmoji:'🥩', pName:'meat',   cycle: 24*HOUR, baseValue: 1200,xp: 280, sellable:true },
+  goat:    { name:'ماعز',  emoji:'🐐', cost: 12000,produce:'جبن_خام',pEmoji:'🧀',pName:'rawcheese',cycle: 30*HOUR,baseValue: 2000,xp: 500, sellable:true },
+};
+
+/* المصانع - تحوّل مواد خام إلى منتجات ذات قيمة أعلى */
+const FACTORIES = {
+  mill: {
+    name:'مطحنة قمح', emoji:'⚙️', size:2, baseCost: 1500, unlockLevel: 3,
+    desc:'تطحن القمح والذرة وتحوّلها إلى دقيق ثمين.',
+    recipes:[
+      { id:'flour',     in:{wheat:2}, out:{flour:1},     time: 1*HOUR, xp: 25,  value: 80 },
+      { id:'cornmeal',  in:{corn:2},  out:{cornmeal:1},  time: 1.5*HOUR, xp: 40, value: 200 },
+    ],
+  },
+  bakery: {
+    name:'مخبز', emoji:'🥖', size:2, baseCost: 5000, unlockLevel: 7,
+    desc:'يخبز خبزاً وكعكاً من الدقيق.',
+    recipes:[
+      { id:'bread', in:{flour:2},        out:{bread:1}, time: 2*HOUR, xp: 80,  value: 280 },
+      { id:'cake',  in:{flour:3,egg:2,milk:1}, out:{cake:1}, time: 4*HOUR, xp: 250, value: 1500 },
+    ],
+  },
+  dairy: {
+    name:'مصنع ألبان', emoji:'🧀', size:2, baseCost: 12000, unlockLevel: 12,
+    desc:'يصنع جبناً وزبداً من الحليب.',
+    recipes:[
+      { id:'cheese', in:{milk:2},          out:{cheese:1}, time: 3*HOUR, xp: 150, value: 800 },
+      { id:'butter', in:{milk:3},          out:{butter:1}, time: 4*HOUR, xp: 200, value: 1200 },
+      { id:'yogurt', in:{milk:1},          out:{yogurt:1}, time: 1.5*HOUR, xp: 60, value: 350 },
+    ],
+  },
+  textile: {
+    name:'مصنع نسيج', emoji:'🧵', size:2, baseCost: 22000, unlockLevel: 17,
+    desc:'يحوّل الصوف والفرو إلى قماش وملابس.',
+    recipes:[
+      { id:'fabric',  in:{wool:3},  out:{fabric:1},  time: 5*HOUR, xp: 280, value: 1800 },
+      { id:'sweater', in:{wool:5,fur:2}, out:{sweater:1}, time: 8*HOUR, xp: 600, value: 5500 },
+    ],
+  },
+  juicePress: {
+    name:'مصنع عصائر', emoji:'🧃', size:2, baseCost: 35000, unlockLevel: 22,
+    desc:'يعصر الفواكه ويصنع عصائر مرغوبة.',
+    recipes:[
+      { id:'juice', in:{strawberry:2}, out:{juice:1}, time: 3*HOUR, xp: 200, value: 1200 },
+      { id:'wmJuice', in:{watermelon:1}, out:{juice:2}, time: 2.5*HOUR, xp: 250, value: 1500 },
+    ],
+  },
+  jamFactory: {
+    name:'مصنع مربى', emoji:'🍯', size:2, baseCost: 65000, unlockLevel: 28,
+    desc:'يحوّل الفواكه إلى مربيات.',
+    recipes:[
+      { id:'jam', in:{strawberry:3}, out:{jam:1}, time: 6*HOUR, xp: 500, value: 3000 },
+    ],
+  },
+  wineCellar: {
+    name:'معمل نبيذ', emoji:'🍷', size:2, baseCost: 150000, unlockLevel: 35,
+    desc:'يحوّل العنب إلى نبيذ فاخر.',
+    recipes:[
+      { id:'wine', in:{grape:5}, out:{wine:1}, time: 12*HOUR, xp: 2000, value: 18000 },
+    ],
+  },
+};
+
+/* قاموس أسماء المنتجات (للعرض) */
+const PRODUCTS = {
+  wheat:'قمح',cucumber:'خيار',carrot:'جزر',corn:'ذرة',tomato:'طماطم',pepper:'فلفل',
+  strawberry:'فراولة',watermelon:'بطيخ',pumpkin:'يقطين',grape:'عنب',
+  egg:'بيض',milk:'حليب',wool:'صوف',meat:'لحم',rawcheese:'جبن خام',fur:'فرو',
+  flour:'دقيق',cornmeal:'دقيق ذرة',bread:'خبز',cake:'كيك',cheese:'جبن',butter:'زبدة',
+  yogurt:'لبن',fabric:'قماش',sweater:'كنزة',juice:'عصير',jam:'مربى',wine:'نبيذ',
+};
+const PRODUCT_EMOJI = {
+  wheat:'🌾',cucumber:'🥒',carrot:'🥕',corn:'🌽',tomato:'🍅',pepper:'🌶️',
+  strawberry:'🍓',watermelon:'🍉',pumpkin:'🎃',grape:'🍇',
+  egg:'🥚',milk:'🥛',wool:'🧶',meat:'🥩',rawcheese:'🧀',fur:'🧶',
+  flour:'🌾',cornmeal:'🌽',bread:'🥖',cake:'🎂',cheese:'🧀',butter:'🧈',
+  yogurt:'🥛',fabric:'🧵',sweater:'🧥',juice:'🧃',jam:'🍯',wine:'🍷',
+};
+
+/* قيمة بيع عامة (للكود السريع - السوق هو السعر الفعلي عبر العرض/الطلب) */
+const baseValueOf = (key) => {
+  if (CROPS[key]) return CROPS[key].baseValue;
+  if (key === 'egg') return 60;
+  if (key === 'milk') return 600;
+  if (key === 'wool') return 280;
+  if (key === 'meat') return 1200;
+  if (key === 'rawcheese') return 2000;
+  if (key === 'fur') return 110;
+  for (const f of Object.values(FACTORIES)) {
+    for (const r of f.recipes) {
+      if (Object.keys(r.out)[0] === key) return r.value;
+    }
+  }
+  return 50;
+};
+
+/* الزينة (لا تفعل شيئاً غير الجمال) */
+const DECORATIONS = {
+  tree:    { name:'شجرة',  emoji:'🌳', size:1, cost: 60,    unlockLevel:1 },
+  flowers: { name:'أزهار', emoji:'🌷', size:1, cost: 100,   unlockLevel:1 },
+  bush:    { name:'شجيرة', emoji:'🌲', size:1, cost: 80,    unlockLevel:1 },
+  scarecrow:{ name:'فزاعة',emoji:'👨‍🌾',size:1, cost: 400,   unlockLevel:3 },
+  fountain:{ name:'نافورة',emoji:'⛲', size:2, cost: 5000,  unlockLevel:10 },
+  statue:  { name:'تمثال', emoji:'🗿', size:1, cost: 12000, unlockLevel:18 },
+};
+
+/* قطعة الأرض - أول قطعة مجانية، ثم من 100K إلى 100M على 30 ترقية */
+const LAND_MAX_PURCHASES = 30;
+const landCostFor = (n) => {
+  if (n === 0) return 0;                           // الأولى مجانية
+  if (n >= LAND_MAX_PURCHASES) return 100000000;   // الحد الأقصى 100 مليون
+  // منحنى أسي من 100K (n=1) إلى 100M (n=30) - 1000 ضعف على 29 خطوة
+  const r = Math.pow(1000, 1 / (LAND_MAX_PURCHASES - 1));
+  return Math.floor(100000 * Math.pow(r, n - 1));
+};
+/* مخزن (سعة) */
+const SILO_BASE_COST = 1500;
+const SILO_BASE_CAP = 80;
+
+/* تجربة المستوى - أصعب قليلاً */
+const xpForLevel = lvl => Math.floor(120 * Math.pow(1.55, lvl-1));
+
+/* مصنع البذور - أسعار شراء البذرة من سوق NPC (ليس من اللعبة مباشرة) */
+const NPC_NAMES = ['أحمد','نورا','سعيد','مريم','ياسر','هدى','عمر','سلمى','بشار','رنا','جواد','فاطمة','حسام','ليلى','زاهر'];
+
+/* قوالب المهام */
+const MISSION_TEMPLATES = [
+  { type:'deliver', item:'wheat', qty:5,  baseReward: 400,  baseXP: 60 },
+  { type:'deliver', item:'wheat', qty:10, baseReward: 800,  baseXP: 120 },
+  { type:'deliver', item:'corn',  qty:5,  baseReward: 1200, baseXP: 200 },
+  { type:'deliver', item:'tomato',qty:5,  baseReward: 2200, baseXP: 350 },
+  { type:'deliver', item:'flour', qty:5,  baseReward: 1500, baseXP: 280 },
+  { type:'deliver', item:'bread', qty:3,  baseReward: 2500, baseXP: 500 },
+  { type:'deliver', item:'cheese',qty:3,  baseReward: 6000, baseXP: 1000 },
+  { type:'deliver', item:'egg',   qty:8,  baseReward: 900,  baseXP: 150 },
+  { type:'deliver', item:'milk',  qty:3,  baseReward: 4500, baseXP: 800 },
+  { type:'deliver', item:'fabric',qty:2,  baseReward: 9000, baseXP: 1500 },
+];
+
+/* ==================== App ==================== */
+function App(){
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  // استرجاع الجلسة من token محفوظ
+  useEffect(()=>{
+    if (!API.token) { setLoading(false); return; }
+    API.me().then(r => setUser(r.user)).catch(() => API.setToken(null)).finally(()=>setLoading(false));
+  }, []);
+  if (loading) return (
+    <div style={{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
+      background:'linear-gradient(135deg,#1b5e20,#ffa000)',color:'#fff',fontSize:24,fontWeight:900}}>
+      🚜 جاري التحميل...
     </div>
-  </div>
-  <div style="margin-top:16px;font-size:10px;color:var(--text3)">1 MSDK داخل اللعبة = 1 MSDK خارج اللعبة</div>
-</div>
+  );
+  if (!user) return <Login onLogin={(u)=>{ setUser(u); }} />;
+  return <Game user={user} onLogout={()=>{ API.setToken(null); API.disconnectSocket(); setUser(null); }} />;
+}
 
-<!-- ===== Game Screen ===== -->
-<div id="gameScreen" class="screen">
-  <!-- Logo -->
-  <div style="text-align:center;padding:8px 0 2px">
-    <div class="logo" style="font-size:22px">MSDK</div>
-    <div class="logo-sub" style="font-size:8px">SMART FARM SIMULATOR</div>
-  </div>
-  <!-- Top bar -->
-  <div class="top-bar">
-    <div class="balance">💰 <span id="balanceDisplay">0</span> MSDK</div>
-    <div class="user-info">
-      <span>👤 <span id="usernameDisplay"></span></span>
-      <span class="logout" onclick="doLogout()">خروج</span>
-    </div>
-  </div>
-  <!-- Level -->
-  <div class="level-bar">
-    <div class="level-circle" id="levelNum">1</div>
-    <div class="level-info">
-      <div class="level-row">
-        <span class="level-title" id="levelTitle">مبتدئ</span>
-        <span class="xp-text" id="xpText">0/500 XP</span>
+/* ==================== شاشة الدخول - تستخدم Backend ==================== */
+function Login({onLogin}){
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    setError('');
+    if (!name.trim() || !password) { setError('الاسم وكلمة المرور مطلوبان'); return; }
+    setBusy(true);
+    try {
+      const fn = mode === 'login' ? API.login.bind(API) : API.register.bind(API);
+      const r = await fn(name.trim(), password);
+      API.setToken(r.token);
+      onLogin(r.user);
+    } catch(e) {
+      setError(e.message);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div style={{fontSize:60}}>🚜</div>
+        <h1>MSDK Farm</h1>
+        <p>مزرعة العملة الرقمية - ازرع، اصنع، تاجر، اربح MSDK</p>
+
+        <div style={{display:'flex',gap:6,marginBottom:10}}>
+          <button className={`login-btn ${mode==='login'?'login-google':'login-guest'}`}
+            style={{flex:1, background: mode==='login'?'#fff':'rgba(255,255,255,0.3)', color:mode==='login'?'#444':'#666'}}
+            onClick={()=>setMode('login')}>🔑 تسجيل دخول</button>
+          <button className={`login-btn ${mode==='register'?'login-guest':'login-google'}`}
+            style={{flex:1, background: mode==='register'?'linear-gradient(180deg,#4caf50,#2e7d32)':'rgba(255,255,255,0.3)',
+                   color:mode==='register'?'#fff':'#666'}}
+            onClick={()=>setMode('register')}>🆕 حساب جديد</button>
+        </div>
+
+        <input className="input" value={name} onChange={(e)=>setName(e.target.value)}
+          placeholder="اسم المستخدم..." maxLength={20} autoFocus
+          onKeyDown={(e)=>{ if (e.key==='Enter') document.getElementById('pw-in')?.focus(); }} />
+        <input id="pw-in" className="input" type="password" value={password}
+          onChange={(e)=>setPassword(e.target.value)}
+          placeholder="كلمة المرور..." style={{marginTop:6}}
+          onKeyDown={(e)=>{ if (e.key==='Enter') submit(); }} />
+
+        {error && <div style={{color:'#b71c1c',fontWeight:900,marginTop:8,fontSize:13}}>⚠️ {error}</div>}
+
+        <button className="login-btn login-guest" disabled={busy}
+          onClick={submit} style={{marginTop:12}}>
+          {busy ? '⏳ جاري...' : (mode==='login' ? '🚪 دخول' : '✅ إنشاء حساب')}
+        </button>
+
+        <div style={{fontSize:10,marginTop:10,color:'#666'}}>
+          🔐 الأدمن: استخدم اسم <b>admin</b> وكلمة المرور المضبوطة في الخادم
+          <br/>💾 تقدمك يحفظ على الخادم - يمكنك الدخول من أي جهاز
+        </div>
       </div>
-      <div class="bar"><div class="bar-fill" id="xpBar" style="width:0%;background:var(--gold)"></div></div>
     </div>
-  </div>
-  <!-- Tabs -->
-  <div class="tabs" id="tabsContainer"></div>
-  <!-- Content -->
-  <div class="content" id="mainContent"></div>
-</div>
-
-<!-- ===== Crop Modal ===== -->
-<div id="cropModal" class="modal" onclick="closeCropModal(event)">
-  <div class="modal-box" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <span class="modal-title">اختر محصول 🌱</span>
-      <button class="modal-close" onclick="closeCropModal()">✕</button>
-    </div>
-    <div id="cropOptions"></div>
-  </div>
-</div>
-
-<script>
-// ========== GAME CONSTANTS (match server exactly) ==========
-const CROPS=[
-  {id:"onion",name:"بصل",emoji:"🧅",growMs:6*3600000,cost:8,value:18,xp:5},
-  {id:"tomato",name:"طماطم",emoji:"🍅",growMs:8*3600000,cost:20,value:35,xp:8},
-  {id:"corn",name:"ذرة",emoji:"🌽",growMs:12*3600000,cost:15,value:30,xp:10},
-  {id:"potato",name:"بطاطس",emoji:"🥔",growMs:16*3600000,cost:12,value:25,xp:7},
-  {id:"wheat",name:"قمح",emoji:"🌾",growMs:24*3600000,cost:10,value:22,xp:12},
-  {id:"cotton",name:"قطن",emoji:"🏵️",growMs:48*3600000,cost:30,value:80,xp:25},
-  {id:"olive",name:"زيتون",emoji:"🫒",growMs:120*3600000,cost:40,value:150,xp:50},
-  {id:"grape",name:"عنب",emoji:"🍇",growMs:168*3600000,cost:50,value:200,xp:75},
-];
-const ANIMALS=[
-  {id:"chicken",name:"دجاج",emoji:"🐔",cost:200,prodMs:4*3600000,product:"بيض",pEmoji:"🥚",pVal:15,xp:8,lvl:5,penId:"chicken_pen"},
-  {id:"sheep",name:"خروف",emoji:"🐑",cost:800,prodMs:12*3600000,product:"صوف",pEmoji:"🧶",pVal:50,xp:20,lvl:10,penId:"sheep_pen"},
-  {id:"goat",name:"ماعز",emoji:"🐐",cost:1000,prodMs:8*3600000,product:"حليب_ماعز",pEmoji:"🥛",pVal:40,xp:15,lvl:15,penId:"goat_pen"},
-  {id:"cow",name:"بقرة",emoji:"🐄",cost:3000,prodMs:6*3600000,product:"حليب",pEmoji:"🥛",pVal:60,xp:25,lvl:20,penId:"cow_pen"},
-  {id:"bee",name:"نحل",emoji:"🐝",cost:1500,prodMs:24*3600000,product:"عسل",pEmoji:"🍯",pVal:100,xp:40,lvl:25,penId:"bee_pen"},
-  {id:"horse",name:"حصان",emoji:"🐴",cost:8000,prodMs:48*3600000,product:"أرباح_سباق",pEmoji:"🏆",pVal:250,xp:80,lvl:30,penId:"horse_pen"},
-];
-const PENS=[
-  {id:"chicken_pen",name:"قن دجاج",emoji:"🏠",cost:500,cap:4,lvl:5,animalId:"chicken",upCost:400},
-  {id:"sheep_pen",name:"حظيرة أغنام",emoji:"🏡",cost:1500,cap:3,lvl:10,animalId:"sheep",upCost:1200},
-  {id:"goat_pen",name:"حظيرة ماعز",emoji:"🏘️",cost:2000,cap:3,lvl:15,animalId:"goat",upCost:1500},
-  {id:"cow_pen",name:"حظيرة أبقار",emoji:"🏗️",cost:5000,cap:2,lvl:20,animalId:"cow",upCost:4000},
-  {id:"bee_pen",name:"خلية نحل",emoji:"🍯",cost:3000,cap:5,lvl:25,animalId:"bee",upCost:2500},
-  {id:"horse_pen",name:"إسطبل",emoji:"🏇",cost:10000,cap:2,lvl:30,animalId:"horse",upCost:8000},
-];
-const FACTORIES=[
-  {id:"mill",name:"طاحونة",emoji:"🏭",desc:"تحويل القمح إلى طحين",cost:2000,lvl:5,input:"wheat",inQty:5,output:"طحين",outQty:3,outVal:50,prodMs:2*3600000,xp:15},
-  {id:"bakery",name:"مخبز",emoji:"🍞",desc:"تحويل الطحين إلى خبز",cost:3500,lvl:8,input:"طحين",inQty:3,output:"خبز",outQty:5,outVal:30,prodMs:1.5*3600000,xp:12},
-  {id:"cannery",name:"مصنع معلبات",emoji:"🥫",desc:"تعليب الطماطم والذرة",cost:5000,lvl:10,input:"tomato",inQty:8,output:"معلبات",outQty:4,outVal:80,prodMs:3*3600000,xp:20},
-  {id:"cheese",name:"مصنع جبن",emoji:"🧀",desc:"تحويل الحليب إلى جبن",cost:6000,lvl:12,input:"حليب",inQty:6,output:"جبن",outQty:3,outVal:120,prodMs:4*3600000,xp:25},
-  {id:"jam",name:"مصنع مربى",emoji:"🫙",desc:"صنع مربى من العنب",cost:8000,lvl:15,input:"grape",inQty:10,output:"مربى",outQty:5,outVal:100,prodMs:3*3600000,xp:30},
-  {id:"oil",name:"مصنع زيت",emoji:"🫒",desc:"عصر الزيتون لإنتاج زيت",cost:12000,lvl:18,input:"olive",inQty:12,output:"زيت_زيتون",outQty:4,outVal:200,prodMs:5*3600000,xp:40},
-  {id:"winery",name:"مصنع عصير",emoji:"🍷",desc:"عصير فاخر من العنب",cost:15000,lvl:20,input:"grape",inQty:15,output:"عصير_فاخر",outQty:3,outVal:350,prodMs:8*3600000,xp:50},
-  {id:"textile",name:"مصنع نسيج",emoji:"🧵",desc:"تحويل القطن إلى أقمشة",cost:18000,lvl:22,input:"cotton",inQty:10,output:"قماش",outQty:4,outVal:280,prodMs:6*3600000,xp:45},
-];
-const PREMIUM=[
-  {id:"auto_water",name:"ري تلقائي",desc:"يروي محاصيلك تلقائياً",cost:500,emoji:"💧"},
-  {id:"auto_harvest",name:"حصاد تلقائي",desc:"يحصد محاصيلك الجاهزة",cost:1000,emoji:"🌾"},
-  {id:"auto_plant",name:"زراعة تلقائية",desc:"يزرع تلقائياً بعد الحصاد",cost:1500,emoji:"🌱"},
-  {id:"auto_collect",name:"جمع تلقائي",desc:"يجمع إنتاج الحيوانات",cost:800,emoji:"📦"},
-  {id:"double_xp",name:"XP مضاعف",desc:"ضعف XP لمدة 24 ساعة",cost:300,emoji:"⭐"},
-];
-const INV_UP=[{l:1,cap:50,cost:0},{l:2,cap:100,cost:500},{l:3,cap:200,cost:2000},{l:4,cap:500,cost:8000},{l:5,cap:1000,cost:25000}];
-const TITLES=["مبتدئ","مزارع جديد","مزارع","مزارع نشيط","مزارع ماهر","مزارع خبير","محترف","سيد المزرعة","أسطورة","ملك المزارع"];
-
-// ========== STATE ==========
-let S={user:null,token:null,tab:"farm",pd:{},adminTab:"stats",cropPlot:-1,sellItem:null,sse:null};
-
-// ========== UTILS ==========
-function xpNeeded(lv){return Math.floor(500*Math.pow(lv,1.8))}
-function getTitle(lv){return TITLES[Math.min(Math.floor(lv/5),TITLES.length-1)]}
-function landPrice(n){return Math.floor(200*Math.pow(2,Math.max(0,n-2)))}
-function fmtTime(ms){
-  if(ms<=0)return"جاهز!";
-  let s=ms/1000,d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);
-  if(d>0)return d+"ي "+h+"س";
-  if(h>0)return h+"س "+m+"د";
-  return m+"د";
-}
-function invUsed(inv){return Object.values(inv||{}).reduce((a,b)=>a+b,0)}
-function invCap(lv){return(INV_UP.find(u=>u.l===(lv||1))||{cap:50}).cap}
-function getCrop(id){return CROPS.find(c=>c.id===id)}
-function getAnimal(id){return ANIMALS.find(a=>a.id===id)}
-function getPen(id){return PENS.find(p=>p.id===id)}
-function getFactory(id){return FACTORIES.find(f=>f.id===id)}
-function itemEmoji(id){const c=getCrop(id);if(c)return c.emoji;const a=ANIMALS.find(x=>x.product===id);if(a)return a.pEmoji;return"📦"}
-function itemName(id){const c=getCrop(id);if(c)return c.name;return id}
-
-// ========== API ==========
-async function api(url,method='GET',body=null){
-  const h={'Content-Type':'application/json'};
-  if(S.token)h['Authorization']=S.token;
-  const opts={method,headers:h};
-  if(body)opts.body=JSON.stringify(body);
-  try{const r=await fetch(url,opts);return await r.json();}
-  catch(e){return{error:e.message}}
+  );
 }
 
-// ========== TOAST ==========
-let toastTimer;
-function toast(msg,type='info'){
-  const el=document.getElementById('toast');
-  el.textContent=msg;
-  el.style.background=type==='success'?'var(--green)':type==='error'?'var(--red)':'var(--accent)';
-  el.className='toast show';
-  clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>el.className='toast',2500);
-}
+/* ==================== اللعبة الرئيسية ==================== */
+function Game({user, onLogout}){
+  const [state, setState] = useState(null); // null = جاري التحميل
+  const [now, setNow] = useState(Date.now());
+  const [toast, setToast] = useState('');
+  const [zoom, setZoom] = useState(0.7);
+  const [pan, setPan] = useState({x:0,y:0});
+  const [panel, setPanel] = useState(null);
+  const [panelTab, setPanelTab] = useState('build');
+  const [selected, setSelected] = useState(null);
+  const [placing, setPlacing] = useState(null);
+  const [planting, setPlanting] = useState(null);
+  const [factoryFor, setFactoryFor] = useState(null);
+  const [penFor, setPenFor] = useState(null);
+  const [stand, setStand] = useState(null);
+  const [chatInput, setChatInput] = useState('');
+  const [serverMarket, setServerMarket] = useState([]);   // عروض حقيقية من الخادم
+  const [chatHistory, setChatHistory] = useState([]);     // رسائل من الخادم
+  const dragRef = useRef(null);
+  const sceneRef = useRef(null);
+  const saveTimerRef = useRef(null);
 
-// ========== AUTH ==========
-let isRegister=false;
-function toggleAuth(){
-  isRegister=!isRegister;
-  document.getElementById('authTitle').textContent=isRegister?'حساب جديد':'تسجيل الدخول';
-  document.getElementById('authBtn').textContent=isRegister?'إنشاء حساب ✨':'دخول 🚀';
-  document.getElementById('authToggle').textContent=isRegister?'لديك حساب؟ سجل دخول':'ليس لديك حساب؟ سجل الآن';
-}
-async function doAuth(){
-  const u=document.getElementById('authUser').value.trim();
-  const p=document.getElementById('authPass').value.trim();
-  if(!u||!p){toast('أدخل اسم المستخدم وكلمة السر','error');return}
-  if(isRegister){
-    const r=await api('/api/register','POST',{username:u,password:p});
-    if(r.error){toast(r.error,'error');return}
-    toast('تم إنشاء الحساب! سجل دخول','success');
-    isRegister=false;toggleAuth();return;
-  }
-  const r=await api('/api/login','POST',{username:u,password:p});
-  if(r.error){toast(r.error,'error');return}
-  S.user=u;S.token=r.token;
-  localStorage.setItem('token',r.token);localStorage.setItem('user',u);
-  toast('مرحباً '+u+'! 👋','success');
-  showGame();
-}
-function doLogout(){
-  api('/api/logout','POST');
-  S.user=null;S.token=null;S.pd={};
-  localStorage.removeItem('token');localStorage.removeItem('user');
-  if(S.sse){S.sse.close();S.sse=null}
-  document.getElementById('loginScreen').classList.add('active');
-  document.getElementById('gameScreen').classList.remove('active');
-}
-
-// ========== AUTO LOGIN ==========
-(function(){
-  const t=localStorage.getItem('token'),u=localStorage.getItem('user');
-  if(t&&u){S.token=t;S.user=u;showGame();}
-})();
-
-// ========== SHOW GAME ==========
-function showGame(){
-  document.getElementById('loginScreen').classList.remove('active');
-  document.getElementById('gameScreen').classList.add('active');
-  document.getElementById('usernameDisplay').textContent=S.user;
-  buildTabs();
-  pollPlayer();
-  startSSE();
-  setInterval(renderTab,1000); // timer updates
-}
-
-// ========== SSE ==========
-function startSSE(){
-  if(S.sse)S.sse.close();
-  S.sse=new EventSource('/api/events?token='+encodeURIComponent(S.token));
-  S.sse.addEventListener('market',()=>{if(S.tab==='market')renderTab()});
-  S.sse.addEventListener('chat',()=>{if(S.tab==='chat')loadChat()});
-  S.sse.addEventListener('notification',e=>{try{toast(e.data,'info')}catch(x){}});
-}
-
-// ========== POLL ==========
-async function pollPlayer(){
-  const r=await api('/api/player/full');
-  if(!r.error&&r.username){S.pd=r;updateHeader();renderTab();}
-  setTimeout(pollPlayer,5000);
-}
-function updateHeader(){
-  const d=S.pd;if(!d.username)return;
-  document.getElementById('balanceDisplay').textContent=(d.msdk||0).toLocaleString();
-  document.getElementById('levelNum').textContent=d.level||1;
-  document.getElementById('levelTitle').textContent=getTitle(d.level||1);
-  const xn=xpNeeded(d.level||1);
-  document.getElementById('xpText').textContent=(d.xp||0)+'/'+xn+' XP';
-  document.getElementById('xpBar').style.width=((d.xp||0)/xn*100)+'%';
-}
-
-// ========== TABS ==========
-function buildTabs(){
-  const tabs=[
-    {id:'farm',label:'المزرعة',e:'🌾'},{id:'animals',label:'الحيوانات',e:'🐄'},
-    {id:'factory',label:'المصانع',e:'🏭'},{id:'market',label:'السوق',e:'🛒'},
-    {id:'inventory',label:'المخزون',e:'📦'},{id:'store',label:'المتجر',e:'⭐'},
-    {id:'topup',label:'شحن',e:'💰'},{id:'withdraw',label:'سحب',e:'💸'},
-    {id:'chat',label:'دردشة',e:'💬'},
-  ];
-  if(S.user==='MSDK')tabs.push({id:'admin',label:'إدارة',e:'👑'});
-  document.getElementById('tabsContainer').innerHTML=tabs.map(t=>
-    `<div class="tab${S.tab===t.id?' active':''}" onclick="switchTab('${t.id}')">${t.e} ${t.label}</div>`
-  ).join('');
-}
-function switchTab(id){
-  S.tab=id;buildTabs();renderTab();
-  if(id==='chat')loadChat();
-  if(id==='market')loadMarket();
-}
-
-// ========== RENDER CURRENT TAB ==========
-function renderTab(){
-  const c=document.getElementById('mainContent');
-  const d=S.pd;if(!d.username){c.innerHTML='<div class="empty">جاري التحميل...</div>';return}
-  switch(S.tab){
-    case'farm':renderFarm(c,d);break;
-    case'animals':renderAnimals(c,d);break;
-    case'factory':renderFactory(c,d);break;
-    case'market':renderMarket(c,d);break;
-    case'inventory':renderInventory(c,d);break;
-    case'store':renderStore(c,d);break;
-    case'topup':renderTopup(c,d);break;
-    case'withdraw':renderWithdraw(c,d);break;
-    case'chat':renderChat(c,d);break;
-    case'admin':renderAdmin(c,d);break;
-    default:c.innerHTML='';
-  }
-}
-
-// ========== FARM ==========
-function renderFarm(c,d){
-  const plots=d.plots||[];
-  const now=Date.now();
-  let html='<div class="card"><div class="card-title">🌱 حقولك ('+plots.length+' قطع)</div><div class="grid-2">';
-  plots.forEach((p,i)=>{
-    const crop=p.crop?getCrop(p.crop):null;
-    const elapsed=crop?(now-p.plantedAt):0;
-    const progress=crop?Math.min(100,elapsed/crop.growMs*100):0;
-    const ready=crop&&elapsed>=crop.growMs;
-    html+='<div class="plot'+(ready?' ready':'')+'">';
-    html+='<div class="plot-emoji">'+(crop?crop.emoji:'🟫')+'</div>';
-    if(crop){
-      html+='<div class="plot-name">'+crop.name+'</div>';
-      html+='<div class="bar"><div class="bar-fill" style="width:'+progress+'%;background:'+(ready?'var(--green)':'var(--accent)')+'"></div></div>';
-      html+='<div class="plot-time" style="color:'+(ready?'var(--green)':'')+'">'+
-        (ready?'جاهز للحصاد! ✅':fmtTime(crop.growMs-elapsed))+'</div>';
-      html+='<div class="plot-btns">';
-      if(ready)html+='<button class="btn btn-green btn-sm" onclick="doHarvest('+i+')">حصاد 🌾</button>';
-      else html+='<button class="btn btn-blue btn-sm" onclick="doWater('+i+')"'+(p.watered?' disabled':'')+'>'+
-        (p.watered?'مروي ✓':'ري 💧 5M')+'</button>';
-      html+='</div>';
-    }else{
-      html+='<div style="font-size:10px;color:var(--text3);margin-bottom:6px">أرض فارغة</div>';
-      html+='<button class="btn btn-accent btn-sm" onclick="openCropModal('+i+')">ازرع 🌱</button>';
-    }
-    html+='</div>';
-  });
-  html+='</div>';
-  const lp=landPrice(plots.length);
-  html+='<div style="margin-top:10px"><button class="btn btn-gold btn-full" onclick="doBuyLand()">شراء أرض جديدة 🌍 — '+lp.toLocaleString()+' MSDK</button></div>';
-  html+='</div>';
-  c.innerHTML=html;
-}
-function openCropModal(idx){
-  S.cropPlot=idx;
-  let html='';
-  CROPS.forEach(cr=>{
-    html+='<div class="crop-option" onclick="doPlant(\''+cr.id+'\')">';
-    html+='<span style="font-size:28px">'+cr.emoji+'</span>';
-    html+='<div style="flex:1"><div style="font-size:12px;font-weight:700">'+cr.name+'</div>';
-    html+='<div style="font-size:10px;color:var(--text3)">نمو: '+fmtTime(cr.growMs)+' | XP: +'+cr.xp+'</div></div>';
-    html+='<div style="text-align:left"><div style="font-size:12px;font-weight:700;color:var(--gold)">'+cr.cost+' M</div>';
-    html+='<div style="font-size:9px;color:var(--green)">قيمة ≈ '+cr.value+' M</div></div>';
-    html+='</div>';
-  });
-  document.getElementById('cropOptions').innerHTML=html;
-  document.getElementById('cropModal').classList.add('active');
-}
-function closeCropModal(e){if(!e||e.target.id==='cropModal')document.getElementById('cropModal').classList.remove('active')}
-async function doPlant(cropId){
-  closeCropModal();
-  const r=await api('/api/plant','POST',{plotIndex:S.cropPlot,cropId});
-  if(r.error){toast(r.error,'error');return}
-  toast('تمت الزراعة! 🌱','success');pollPlayer();
-}
-async function doWater(i){
-  const r=await api('/api/water','POST',{plotIndex:i});
-  if(r.error){toast(r.error,'error');return}
-  toast('تم الري! 💧','success');pollPlayer();
-}
-async function doHarvest(i){
-  const r=await api('/api/harvest','POST',{plotIndex:i});
-  if(r.error){toast(r.error,'error');return}
-  toast('حصاد '+(r.qty||1)+'× '+(r.cropId||'')+ ' (+'+( r.xp||0)+' XP)','success');pollPlayer();
-}
-async function doBuyLand(){
-  const r=await api('/api/buy-land','POST',{});
-  if(r.error){toast(r.error,'error');return}
-  toast('اشتريت أرض جديدة! 🌍','success');pollPlayer();
-}
-
-// ========== ANIMALS ==========
-function renderAnimals(c,d){
-  let html='';
-  const pens=d.ownedPens||{};
-  const now=Date.now();
-  // Owned pens
-  if(Object.keys(pens).length>0){
-    html+='<div class="card"><div class="card-title">🏡 حظائرك</div>';
-    for(const pid in pens){
-      const pen=pens[pid];const pDef=getPen(pid);if(!pDef)continue;
-      const animal=getAnimal(pDef.animalId);
-      const maxCap=pDef.cap*(pen.level||1);
-      const upCost=pDef.upCost*(pen.level||1);
-      html+='<div class="item-row owned">';
-      html+='<span class="item-emoji">'+pDef.emoji+'</span>';
-      html+='<div class="item-info"><div class="item-name">'+pDef.name+' (مستوى '+(pen.level||1)+')</div>';
-      html+='<div class="item-desc">'+(pen.animals||[]).length+'/'+maxCap+' حيوان</div>';
-      // Animals
-      if(pen.animals&&pen.animals.length>0){
-        html+='<div class="pen-animals">';
-        pen.animals.forEach(a=>{
-          const ready=animal&&(now-a.lastCollect)>=animal.prodMs;
-          html+='<span class="pen-animal'+(ready?' ready':'')+'">'+animal.emoji+(ready?' ✅':'')+'</span>';
+  /* ====== جلب state من Backend ====== */
+  useEffect(()=>{
+    API.loadState().then(r => {
+      if (r.state) {
+        // ترحيل ودمج
+        const data = r.state;
+        setState({
+          ...data,
+          panel:null, selected:null, placing:null,
+          myStand: data.myStand || Array(9).fill(null),
+          walletHistory: data.walletHistory || [],
+          missions: data.missions || [],
+          missionsRefreshAt: data.missionsRefreshAt || 0,
+          farmSize: data.farmSize || (12 + (data.landPlotsBought||0)),
+          timeMul: data.timeMul ?? 1,
+          crops: data.crops || {},
+          products: data.products || {},
+          unlockedCrops: data.unlockedCrops || ['wheat'],
+          buildings: data.buildings || [],
+          nextId: data.nextId || 100,
+          msdk: data.msdk ?? 800, xp: data.xp ?? 0, level: data.level ?? 1,
+          landPlotsBought: data.landPlotsBought || 0,
+          adminLog: data.adminLog || [],
         });
-        html+='</div>';
+      } else {
+        // قرية جديدة
+        setState(makeFreshState(user));
       }
-      html+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
-      html+='<button class="btn btn-purple btn-sm" onclick="doUpgradePen(\''+pid+'\')">ترقية '+upCost+'M</button>';
-      html+='<button class="btn btn-accent btn-sm" onclick="doBuyAnimal(\''+pDef.animalId+'\')"'+((pen.animals||[]).length>=maxCap||d.msdk<animal.cost?' disabled':'')+'>شراء '+animal.name+' '+animal.cost+'M</button>';
-      if(pen.animals&&pen.animals.length>0)html+='<button class="btn btn-green btn-sm" onclick="doCollectAnimal(\''+pDef.animalId+'\')">جمع '+animal.pEmoji+'</button>';
-      html+='</div></div></div>';
-    }
-    html+='</div>';
-  }
-  // Buy pens
-  html+='<div class="card"><div class="card-title">🏗️ شراء حظيرة جديدة</div>';
-  html+='<div class="note">كل 5 مستويات تفتح نوع حظيرة جديد. اشترِ الحظيرة أولاً ثم الحيوان!</div>';
-  PENS.forEach(pen=>{
-    const owned=!!pens[pen.id];const locked=(d.level||1)<pen.lvl;
-    const animal=getAnimal(pen.animalId);
-    html+='<div class="item-row'+(locked?' locked':'')+(owned?' owned':'')+'">';
-    html+='<span class="item-emoji">'+pen.emoji+'</span>';
-    html+='<div class="item-info"><div class="item-name">'+pen.name+(owned?' <span style="color:var(--green);font-size:10px">✓ مملوكة</span>':'')+'</div>';
-    html+='<div class="item-desc">لـ '+animal.name+' '+animal.emoji+' | سعة: '+pen.cap+' | مستوى '+pen.lvl+'+</div>';
-    html+='<div class="item-desc">سعر الحيوان: '+animal.cost+' M | إنتاج: '+animal.pEmoji+' كل '+fmtTime(animal.prodMs)+'</div>';
-    html+='</div><div class="item-actions">';
-    if(owned)html+='<span style="font-size:10px;color:var(--green);font-weight:700">مملوكة ✅</span>';
-    else if(locked)html+='<span style="font-size:10px;color:var(--red)">🔒 مستوى '+pen.lvl+'</span>';
-    else html+='<button class="btn btn-gold btn-sm" onclick="doBuyPen(\''+pen.id+'\')">'+pen.cost+' M</button>';
-    html+='</div></div>';
-  });
-  html+='</div>';
-  c.innerHTML=html;
-}
-async function doBuyPen(id){const r=await api('/api/buy-pen','POST',{penId:id});if(r.error){toast(r.error,'error');return}toast('اشتريت الحظيرة! 🏡','success');pollPlayer()}
-async function doUpgradePen(id){const r=await api('/api/upgrade-pen','POST',{penId:id});if(r.error){toast(r.error,'error');return}toast('تمت الترقية!','success');pollPlayer()}
-async function doBuyAnimal(id){const r=await api('/api/buy-animal','POST',{animalId:id});if(r.error){toast(r.error,'error');return}toast('اشتريت الحيوان!','success');pollPlayer()}
-async function doCollectAnimal(id){const r=await api('/api/collect-animal','POST',{animalId:id});if(r.error){toast(r.error,'error');return}toast('تم الجمع! +'+(r.xp||0)+' XP','success');pollPlayer()}
+    }).catch(err => {
+      console.error('فشل تحميل اللعبة:', err);
+      setState(makeFreshState(user));
+    });
+  }, [user.id]);
 
-// ========== FACTORIES ==========
-function renderFactory(c,d){
-  let html='';const now=Date.now();
-  // Owned
-  if(d.ownedFactories&&d.ownedFactories.length>0){
-    html+='<div class="card"><div class="card-title">⚙️ مصانعك</div>';
-    d.ownedFactories.forEach((of,i)=>{
-      const f=getFactory(of.factoryId);if(!f)return;
-      const elapsed=of.producing&&of.startedAt?(now-of.startedAt):0;
-      const progress=of.producing?Math.min(100,elapsed/f.prodMs*100):0;
-      const ready=of.producing&&elapsed>=f.prodMs;
-      html+='<div class="item-row'+(ready?' owned':'')+'">';
-      html+='<span class="item-emoji">'+f.emoji+'</span>';
-      html+='<div class="item-info"><div class="item-name">'+f.name+'</div>';
-      html+='<div class="item-desc">'+f.desc+'</div>';
-      if(of.producing){
-        html+='<div class="factory-status"><div class="bar"><div class="bar-fill" style="width:'+progress+'%;background:'+(ready?'var(--green)':'var(--orange)')+'"></div></div>';
-        html+='<div style="font-size:9px;color:'+(ready?'var(--green)':'var(--text3)')+';margin-top:3px">'+(ready?'الإنتاج جاهز! ✅':'متبقي: '+fmtTime(f.prodMs-elapsed))+'</div></div>';
-        if(ready)html+='<button class="btn btn-green btn-sm" style="margin-top:4px" onclick="doCollectFactory('+i+')">جمع '+f.outQty+'× '+f.output+'</button>';
-      }else{
-        html+='<button class="btn btn-accent btn-sm" style="margin-top:4px" onclick="doStartFactory('+i+')">تشغيل ('+f.inQty+'× '+f.input+')</button>';
-        html+='<span style="font-size:9px;color:var(--text3);margin-right:6px">→ '+f.outQty+'× '+f.output+' ('+fmtTime(f.prodMs)+')</span>';
+  /* ====== Socket.IO للسوق والدردشة ====== */
+  useEffect(()=>{
+    const socket = API.connectSocket();
+    socket.on('connect', ()=> console.log('🔌 متصل بالخادم'));
+    socket.on('disconnect', ()=> console.log('❌ انقطع الاتصال'));
+
+    socket.on('chat:msg', (msg) => {
+      setChatHistory(h => [...h, { ...msg, id:'srv_'+msg.time, me: msg.user_id === user.id, bot: false }].slice(-50));
+    });
+    socket.on('market:update', () => { refreshMarket(); });
+    socket.on('notify', (n) => {
+      setToast(n.msg);
+      setTimeout(()=>setToast(''), 4000);
+      // أعد تحميل state عند بيع شيء
+      if (n.type === 'sale') refreshState();
+    });
+    socket.on('presence', (p) => { /* console.log('presence', p); */ });
+
+    // تحميل أولي للدردشة والسوق
+    API.chatRecent().then(r => {
+      const msgs = (r.messages||[]).map(m => ({...m, id:'srv_'+m.time, me: m.user_id === user.id}));
+      setChatHistory(msgs);
+    });
+    refreshMarket();
+
+    return () => API.disconnectSocket();
+  }, [user.id]);
+
+  const refreshMarket = useCallback(()=>{
+    API.marketList('all', 'priceAsc').then(r => setServerMarket(r.listings||[])).catch(()=>{});
+  }, []);
+
+  const refreshState = useCallback(()=>{
+    API.loadState().then(r => { if (r.state) setState(s => ({...s, ...r.state, panel:s?.panel, selected:s?.selected, placing:s?.placing })); });
+  }, []);
+
+  /* ====== الحفظ التلقائي على Backend (debounced) ====== */
+  useEffect(()=>{
+    if (!state) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(()=>{
+      const toSave = {
+        msdk: state.msdk, xp: state.xp, level: state.level,
+        buildings: state.buildings, nextId: state.nextId,
+        crops: state.crops, products: state.products,
+        unlockedCrops: state.unlockedCrops, landPlotsBought: state.landPlotsBought,
+        myStand: state.myStand, walletHistory: state.walletHistory,
+        missions: state.missions, missionsRefreshAt: state.missionsRefreshAt,
+        farmSize: state.farmSize, timeMul: state.timeMul,
+        adminLog: state.adminLog,
+      };
+      API.saveState(toSave).catch(err => console.error('فشل الحفظ:', err));
+    }, 1500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [state]);
+
+  /* ====== ساعة اللعبة ====== */
+  useEffect(()=>{
+    const t = setInterval(()=>setNow(Date.now()), 1000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  /* ====== تحديث السوق دورياً (كل 30 ثانية) ====== */
+  useEffect(()=>{
+    const t = setInterval(refreshMarket, 30_000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  /* ====== Pan / Zoom ====== */
+  useEffect(()=>{
+    const onWheel = (e)=>{
+      e.preventDefault();
+      setZoom(z => Math.max(0.3, Math.min(1.5, z - e.deltaY*0.001)));
+    };
+    const w = sceneRef.current;
+    if (w) w.addEventListener('wheel', onWheel, {passive:false});
+    return ()=>{ if (w) w.removeEventListener('wheel', onWheel); };
+  },[]);
+  const onPanStart = (e)=>{
+    if (placing || planting || factoryFor || penFor || stand) return;
+    const p = e.touches ? e.touches[0] : e;
+    dragRef.current = { startX:p.clientX, startY:p.clientY, panX:pan.x, panY:pan.y, moved:false };
+  };
+  const onPanMove = (e)=>{
+    if (!dragRef.current) return;
+    const p = e.touches ? e.touches[0] : e;
+    const dx = p.clientX - dragRef.current.startX;
+    const dy = p.clientY - dragRef.current.startY;
+    if (Math.abs(dx)>4 || Math.abs(dy)>4) dragRef.current.moved = true;
+    setPan({ x: dragRef.current.panX+dx, y: dragRef.current.panY+dy });
+  };
+  const onPanEnd = ()=>{ dragRef.current=null; };
+
+  /* ====== مساعدات ====== */
+  const showToast = (msg)=>{ setToast(msg); setTimeout(()=>setToast(''), 2200); };
+  const flyText = (text, x, y, color='#ffd54f')=>{
+    const div = document.createElement('div');
+    div.className = 'fly';
+    div.style.left = (x||window.innerWidth/2)+'px'; div.style.top = (y||100)+'px'; div.style.color = color;
+    div.textContent = text; document.body.appendChild(div);
+    setTimeout(()=>div.remove(), 1100);
+  };
+  const fmt = (n)=> n.toLocaleString('en-US');
+  const fmtTime = (s)=>{
+    s = Math.max(0, Math.floor(s));
+    if (s < 60) return s+' ث';
+    if (s < 3600) return Math.floor(s/60)+'د '+(s%60)+'ث';
+    if (s < DAY) return Math.floor(s/3600)+'س '+Math.floor((s%3600)/60)+'د';
+    return Math.floor(s/DAY)+'ي '+Math.floor((s%DAY)/3600)+'س';
+  };
+  const tMul = state.timeMul || 1;
+
+  /* ====== مساعدات شبكة ====== */
+  const cellsOf = (b)=>{
+    const def = defOf(b.type); const sz = def.size||1;
+    const arr = [];
+    for (let dx=0; dx<sz; dx++) for (let dy=0; dy<sz; dy++) arr.push(`${b.x+dx},${b.y+dy}`);
+    return arr;
+  };
+  const isOccupied = (x, y, size, ignoreId=null)=>{
+    const cells = new Set();
+    state.buildings.forEach(b => { if (b.id !== ignoreId) cellsOf(b).forEach(c => cells.add(c)); });
+    for (let dx=0; dx<size; dx++) for (let dy=0; dy<size; dy++) {
+      if (cells.has(`${x+dx},${y+dy}`)) return true;
+    }
+    return false;
+  };
+  const inBounds = (x, y, size)=>{
+    const lim = state.farmSize || 12;
+    return x>=0 && y>=0 && x+size<=lim && y+size<=lim;
+  };
+
+  /* ====== XP & مستوى ====== */
+  const addXP = (amount, _state=null)=>{
+    setState(s => {
+      let xp = s.xp + amount, level = s.level;
+      let need = xpForLevel(level);
+      let newCrops = {...s.crops};
+      let newUnlocked = [...s.unlockedCrops];
+      while (xp >= need) {
+        xp -= need; level += 1; need = xpForLevel(level);
+        // فتح محاصيل جديدة + 1 من المحصول مجاناً (يستخدم للزراعة أو البيع)
+        Object.entries(CROPS).forEach(([key,c])=>{
+          if (c.unlockLevel === level && !newUnlocked.includes(key)) {
+            newUnlocked.push(key);
+            newCrops[key] = (newCrops[key]||0) + 1;
+            showToast(`🎁 محصول جديد: ${c.name} - +1 ${c.name} مجاناً`);
+          }
+        });
+        showToast(`🎉 وصلت المستوى ${level}!`);
       }
-      html+='</div></div>';
+      return { ...s, xp, level, crops: newCrops, unlockedCrops: newUnlocked };
     });
-    html+='</div>';
-  }
-  // Build new
-  html+='<div class="card"><div class="card-title">🏗️ بناء مصنع جديد</div>';
-  FACTORIES.forEach(f=>{
-    const locked=(d.level||1)<f.lvl;
-    const ownedCount=(d.ownedFactories||[]).filter(o=>o.factoryId===f.id).length;
-    html+='<div class="item-row'+(locked?' locked':'')+'">';
-    html+='<span class="item-emoji" style="font-size:32px">'+f.emoji+'</span>';
-    html+='<div class="item-info"><div class="item-name">'+f.name+(ownedCount>0?' <span style="color:var(--green);font-size:10px">('+ownedCount+' مبني)</span>':'')+'</div>';
-    html+='<div class="item-desc" style="color:var(--accent)">'+f.desc+'</div>';
-    html+='<div class="item-desc">المدخلات: '+f.inQty+'× '+f.input+' → المخرجات: '+f.outQty+'× '+f.output+'</div>';
-    html+='<div class="item-desc">وقت الإنتاج: '+fmtTime(f.prodMs)+' | قيمة: '+f.outVal+' M/وحدة</div>';
-    html+='<div class="item-price">السعر: '+f.cost.toLocaleString()+' MSDK | مستوى '+f.lvl+'+</div>';
-    html+='</div><div class="item-actions">';
-    if(locked)html+='<span style="font-size:10px;color:var(--red)">🔒 مستوى '+f.lvl+'</span>';
-    else html+='<button class="btn btn-gold btn-sm" onclick="doBuildFactory(\''+f.id+'\')"'+(d.msdk<f.cost?' disabled':'')+'>بناء</button>';
-    html+='</div></div>';
-  });
-  html+='</div>';
-  c.innerHTML=html;
-}
-async function doBuildFactory(id){const r=await api('/api/buy-factory','POST',{factoryId:id});if(r.error){toast(r.error,'error');return}toast('تم بناء المصنع!','success');pollPlayer()}
-async function doStartFactory(i){const r=await api('/api/start-factory','POST',{index:i});if(r.error){toast(r.error,'error');return}toast('بدأ الإنتاج...','info');pollPlayer()}
-async function doCollectFactory(i){const r=await api('/api/collect-factory','POST',{index:i});if(r.error){toast(r.error,'error');return}toast('تم الجمع! +'+(r.xp||0)+' XP','success');pollPlayer()}
+  };
 
-// ========== MARKET (P2P only) ==========
-let marketListings=[];
-async function loadMarket(){const r=await api('/api/market/listings');if(Array.isArray(r))marketListings=r;renderTab()}
-function renderMarket(c,d){
-  const inv=d.inventory||{};
-  let html='<div class="card"><div class="card-title">📤 عرض منتج للبيع</div>';
-  if(Object.keys(inv).length===0)html+='<div class="empty">مخزونك فارغ!</div>';
-  else{
-    html+='<div class="inv-chips">';
-    for(const item in inv)html+='<div class="inv-chip'+(S.sellItem===item?' selected':'')+'" onclick="selectSellItem(\''+item+'\')">'+itemEmoji(item)+' '+itemName(item)+' ×'+inv[item]+'</div>';
-    html+='</div>';
-    if(S.sellItem){
-      html+='<div style="display:flex;gap:6px;align-items:flex-end">';
-      html+='<div style="flex:1"><div style="font-size:9px;color:var(--text3);margin-bottom:2px">الكمية</div><input type="number" id="sellQty" min="1" max="'+(inv[S.sellItem]||1)+'" value="1" style="margin:0"></div>';
-      html+='<div style="flex:1"><div style="font-size:9px;color:var(--text3);margin-bottom:2px">السعر/وحدة</div><input type="number" id="sellPrice" min="1" value="10" style="margin:0"></div>';
-      html+='<button class="btn btn-green btn-sm" onclick="doListMarket()">عرض</button>';
-      html+='</div>';
+  /* ====== جرد - مساعد ====== */
+  const totalInv = ()=>{
+    return Object.values(state.crops).reduce((a,b)=>a+b,0)
+         + Object.values(state.products).reduce((a,b)=>a+b,0);
+  };
+  const invCap = ()=>{
+    const silos = state.buildings.filter(b => b.type === 'silo');
+    return SILO_BASE_CAP + silos.reduce((a,s)=>a + (s.level||1) * 50, 0);
+  };
+
+  /* ====== شراء أرض ====== */
+  const buyLand = ()=>{
+    if (state.landPlotsBought >= LAND_MAX_PURCHASES) {
+      showToast('🏆 وصلت الحد الأقصى من الأراضي!'); return;
     }
-  }
-  html+='</div>';
-  // Listings
-  html+='<div class="card"><div class="card-title">🏪 العروض المتاحة (P2P)</div>';
-  if(marketListings.length===0)html+='<div class="empty">لا توجد عروض حالياً</div>';
-  else marketListings.forEach(l=>{
-    html+='<div class="item-row">';
-    html+='<div class="item-info"><div class="item-name">'+l.qty+'× '+itemEmoji(l.item)+' '+itemName(l.item)+'</div>';
-    html+='<div class="item-desc">من: '+l.seller+'</div></div>';
-    html+='<div style="text-align:left;margin-left:8px"><div class="item-price">'+(l.pricePerUnit*l.qty)+' M</div>';
-    html+='<div style="font-size:9px;color:var(--text3)">'+l.pricePerUnit+' M/وحدة</div></div>';
-    html+='<button class="btn btn-accent btn-sm" onclick="doBuyMarket(\''+l.id+'\')"'+(l.seller===S.user?' disabled':'')+'>شراء</button>';
-    html+='</div>';
-  });
-  html+='</div>';
-  c.innerHTML=html;
-}
-function selectSellItem(item){S.sellItem=S.sellItem===item?null:item;renderTab()}
-async function doListMarket(){
-  const qty=parseInt(document.getElementById('sellQty')?.value)||1;
-  const price=parseInt(document.getElementById('sellPrice')?.value)||1;
-  const r=await api('/api/market/list','POST',{item:S.sellItem,qty,pricePerUnit:price});
-  if(r.error){toast(r.error,'error');return}
-  toast('تم العرض!','success');S.sellItem=null;pollPlayer();loadMarket();
-}
-async function doBuyMarket(id){const r=await api('/api/market/buy','POST',{listingId:id});if(r.error){toast(r.error,'error');return}toast('تم الشراء!','success');pollPlayer();loadMarket()}
-
-// ========== INVENTORY ==========
-function renderInventory(c,d){
-  const inv=d.inventory||{};const used=invUsed(inv);const cap=invCap(d.invLevel||1);
-  const pct=cap>0?used/cap*100:0;
-  let html='<div class="card"><div class="card-title">📦 المخزون</div>';
-  html+='<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px">السعة: '+used+'/'+cap+'</span><span style="font-size:10px;color:var(--text3)">مستوى '+(d.invLevel||1)+'</span></div>';
-  html+='<div class="bar"><div class="bar-fill" style="width:'+pct+'%;background:'+(pct>80?'var(--red)':'var(--accent)')+'"></div></div>';
-  // Upgrade
-  const next=INV_UP.find(u=>u.l===(d.invLevel||1)+1);
-  if(next){
-    html+='<div style="margin-top:10px;padding:8px 10px;background:rgba(155,89,182,0.1);border-radius:8px;border:1px solid rgba(155,89,182,0.2)">';
-    html+='<div style="font-size:11px;color:var(--purple);font-weight:600;margin-bottom:4px">ترقية → سعة '+next.cap+' 📦</div>';
-    html+='<button class="btn btn-purple btn-sm" onclick="doUpgradeInv()"'+(d.msdk<next.cost?' disabled':'')+'>ترقية — '+next.cost.toLocaleString()+' MSDK</button>';
-    html+='</div>';
-  }
-  // Items
-  if(Object.keys(inv).length===0)html+='<div class="empty" style="margin-top:12px">المخزون فارغ</div>';
-  else{
-    html+='<div class="grid-2" style="margin-top:10px">';
-    for(const item in inv){
-      html+='<div class="inv-item"><div class="inv-item-emoji">'+itemEmoji(item)+'</div>';
-      html+='<div class="inv-item-name">'+itemName(item)+'</div>';
-      html+='<div class="inv-item-qty">×'+inv[item]+'</div></div>';
+    const cost = landCostFor(state.landPlotsBought);
+    if (cost > 0 && state.msdk < cost) {
+      showToast(`💸 يحتاج ${fmt(cost)} MSDK`); return;
     }
-    html+='</div>';
-  }
-  html+='</div>';
-  c.innerHTML=html;
-}
-async function doUpgradeInv(){const r=await api('/api/upgrade-inventory','POST',{});if(r.error){toast(r.error,'error');return}toast('تم ترقية المخزون! 📦','success');pollPlayer()}
+    if (cost > 0 && !confirm(`شراء قطعة الأرض رقم ${state.landPlotsBought+1} بسعر ${fmt(cost)} MSDK؟`)) return;
+    setState(s => ({
+      ...s, msdk: s.msdk - cost,
+      landPlotsBought: s.landPlotsBought + 1,
+      farmSize: (s.farmSize||12) + 1,  // كل ترقية تزيد صف وعمود
+    }));
+    showToast(cost === 0 ? '🎁 قطعة الأرض الأولى مجانية!' : `✅ وسعت أرضك! +1 صف وعمود`);
+    addXP(cost === 0 ? 10 : 50);
+    pushAdminLog('بيع أرض بسعر '+fmt(cost));
+  };
 
-// ========== STORE ==========
-function renderStore(c,d){
-  let html='<div class="card"><div class="card-title">⭐ متجر المميزات</div>';
-  html+='<div class="note">اشترِ مميزات تساعدك في الزراعة تلقائياً!</div>';
-  PREMIUM.forEach(p=>{
-    const owned=d.premiumFeatures&&d.premiumFeatures[p.id];
-    html+='<div class="item-row'+(owned?' owned':'')+'">';
-    html+='<span class="item-emoji">'+p.emoji+'</span>';
-    html+='<div class="item-info"><div class="item-name">'+p.name+'</div>';
-    html+='<div class="item-desc">'+p.desc+'</div></div>';
-    html+='<div class="item-actions">';
-    if(owned)html+='<span style="font-size:10px;color:var(--green);font-weight:700">مفعّل ✅</span>';
-    else html+='<button class="btn btn-gold btn-sm" onclick="doBuyPremium(\''+p.id+'\')"'+(d.msdk<p.cost?' disabled':'')+'>'+p.cost+' M</button>';
-    html+='</div></div>';
-  });
-  html+='</div>';
-  c.innerHTML=html;
-}
-async function doBuyPremium(id){const r=await api('/api/buy-premium','POST',{featureId:id});if(r.error){toast(r.error,'error');return}toast('تم التفعيل! ⭐','success');pollPlayer()}
+  /* ====== بناء ====== */
+  const startBuild = (type)=>{
+    const def = defOf(type);
+    if (def.unlockLevel && state.level < def.unlockLevel) {
+      showToast(`🔒 يحتاج المستوى ${def.unlockLevel}`); return;
+    }
+    const cost = def.baseCost || def.cost || 0;
+    if (state.msdk < cost) { showToast('💸 لا يكفي MSDK'); return; }
+    setPlacing({ type, fromId:null });
+    setPanel(null); setSelected(null);
+  };
+  const startMove = (b)=>{ setPlacing({ type:b.type, fromId:b.id }); setSelected(null); };
+  const tryPlace = (gx, gy)=>{
+    if (!placing) return;
+    const def = defOf(placing.type); const size = def.size || 1;
+    if (!inBounds(gx, gy, size)) { showToast('❌ خارج الحدود - اشتري أرضاً أكبر'); return; }
+    if (isOccupied(gx, gy, size, placing.fromId)) { showToast('❌ المكان مشغول'); return; }
+    if (placing.fromId) {
+      setState(s => ({ ...s,
+        buildings: s.buildings.map(b => b.id === placing.fromId ? { ...b, x:gx, y:gy } : b),
+      }));
+    } else {
+      const cost = def.baseCost || def.cost || 0;
+      const newB = {
+        id: state.nextId, type: placing.type, level: 1, x:gx, y:gy,
+        ...(def.isPlot ? { planted:null, plantedAt:0, lastWatered:0, missedWaters:0,
+                           harvestsSinceFert:0, fertilized:false, dead:false } : {}),
+        ...(PEN_TYPES[placing.type] ? { animals:[] } : {}),
+        ...(FACTORIES[placing.type] ? { queue:[] } : {}),
+        ...(placing.type === 'silo' ? { lastCollect: 0 } : {}),
+      };
+      setState(s => ({ ...s, msdk: s.msdk - cost,
+        buildings: [...s.buildings, newB], nextId: s.nextId+1 }));
+      addXP(15);
+      showToast(`✅ تم بناء ${def.name}`);
+      pushAdminLog('بناء '+def.name+' بسعر '+fmt(cost));
+    }
+    setPlacing(null);
+  };
 
-// ========== TOPUP ==========
-function renderTopup(c,d){
-  let html='<div class="card"><div class="card-title">💰 شحن MSDK عبر العملات الرقمية</div>';
-  html+='<div class="note">1 MSDK داخل اللعبة = 1 MSDK خارج اللعبة. أرسل المبلغ لأحد العناوين ثم أدخل TX Hash.</div>';
-  const wallets=[
-    {name:'USDT (TRC20)',addr:'TXxxxxxxxxxxxxxxxxxxxxxxxxxxx',color:'var(--green)'},
-    {name:'BTC',addr:'bc1qxxxxxxxxxxxxxxxxxxxxxxxxxx',color:'var(--orange)'},
-    {name:'ETH',addr:'0xXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',color:'var(--blue)'},
-  ];
-  wallets.forEach(w=>{
-    html+='<div class="wallet-box" style="border:1px solid '+w.color+'33"><div class="wallet-name" style="color:'+w.color+'">'+w.name+'</div>';
-    html+='<div class="wallet-addr">'+w.addr+'</div></div>';
-  });
-  html+='<input type="number" id="topupAmt" placeholder="المبلغ بالـ MSDK">';
-  html+='<select id="topupCur"><option value="USDT_TRC20">USDT (TRC20)</option><option value="BTC">BTC</option><option value="ETH">ETH</option></select>';
-  html+='<input id="topupTx" placeholder="TX Hash أو إثبات الدفع" style="direction:ltr">';
-  html+='<button class="btn btn-gold btn-full" onclick="doTopup()">إرسال طلب الشحن 📤</button>';
-  html+='</div>';
-  // History
-  const hist=(d._topups||[]);
-  if(hist.length>0){
-    html+='<div class="card"><div class="card-title">📋 سجل طلباتك</div>';
-    hist.forEach(h=>{
-      html+='<div class="history-item"><div><div style="font-size:12px;font-weight:700">'+h.amount+' MSDK</div>';
-      html+='<div style="font-size:9px;color:var(--text3)">'+new Date(h.requestedAt).toLocaleDateString('ar')+'</div></div>';
-      html+='<span class="status-badge status-'+h.status+'">'+(h.status==='approved'?'مقبول ✅':h.status==='rejected'?'مرفوض ❌':'قيد المراجعة ⏳')+'</span></div>';
-    });
-    html+='</div>';
-  }
-  c.innerHTML=html;
-}
-async function doTopup(){
-  const amt=parseInt(document.getElementById('topupAmt')?.value);
-  const cur=document.getElementById('topupCur')?.value;
-  const tx=document.getElementById('topupTx')?.value?.trim();
-  if(!amt||amt<1){toast('أدخل مبلغ صالح','error');return}
-  if(!tx){toast('أدخل TX Hash','error');return}
-  const r=await api('/api/topup/create','POST',{amount:amt,currency:cur,txHash:tx});
-  if(r.error){toast(r.error,'error');return}
-  toast('تم إرسال الطلب!','success');pollPlayer();
+  /* ====== هدم - بدون استرداد ====== */
+  const removeBld = (b)=>{
+    if (b.type === 'townhall') return;
+    if (!confirm(`هدم ${defOf(b.type).name}؟\n⚠️ لن يتم استرداد أي مبلغ!`)) return;
+    setState(s => ({ ...s,
+      buildings: s.buildings.filter(x => x.id !== b.id) }));
+    setSelected(null);
+    setPenFor(null); setFactoryFor(null);
+    showToast(`🗑️ هدمت ${defOf(b.type).name}`);
+  };
+
+  /* ====== ترقية حضيرة / صومعة - مع تأكيد للمبلغ ====== */
+  const upgradePen = (b)=>{
+    const def = PEN_TYPES[b.type];
+    const maxCap = 5;
+    const currentCap = def.baseCap + (b.level-1) * def.capPerLevel;
+    if (currentCap >= maxCap) { showToast('💎 الحد الأقصى لسعة الحضيرة هو 5'); return; }
+    const cost = def.upgradeCost(b.level);
+    if (state.msdk < cost) { showToast(`💸 يحتاج ${fmt(cost)} MSDK`); return; }
+    if (!confirm(`ترقية ${def.name} إلى المستوى ${b.level+1}؟\nالسعة: ${currentCap} → ${Math.min(maxCap, currentCap+def.capPerLevel)}\nالسعر: ${fmt(cost)} MSDK`)) return;
+    setState(s => ({ ...s, msdk: s.msdk - cost,
+      buildings: s.buildings.map(x => x.id === b.id ? { ...x, level: x.level+1 } : x) }));
+    addXP(80);
+    showToast(`⬆️ ${def.name} → م${b.level+1}`);
+  };
+  const upgradeSilo = (b)=>{
+    const cost = Math.floor(SILO_BASE_COST * Math.pow(1.6, b.level));
+    if (state.msdk < cost) { showToast(`💸 يحتاج ${fmt(cost)} MSDK`); return; }
+    if (!confirm(`ترقية الصومعة إلى م${b.level+1}؟\nسعة إضافية: +50\nالسعر: ${fmt(cost)} MSDK`)) return;
+    setState(s => ({ ...s, msdk: s.msdk - cost,
+      buildings: s.buildings.map(x => x.id === b.id ? { ...x, level: x.level+1 } : x) }));
+    addXP(60);
+    showToast(`⬆️ صومعة م${b.level+1} - سعة +50`);
+  };
+  /* ترقية مصنع - تزيد سعة الطابور (max 5) */
+  const upgradeFactory = (b)=>{
+    const f = FACTORIES[b.type]; if (!f) return;
+    const currentCap = (b.queueCap || 3);
+    if (currentCap >= 5) { showToast('💎 الحد الأقصى لطابور المصنع هو 5'); return; }
+    const cost = Math.floor((f.baseCost || 1000) * 0.6 * Math.pow(1.7, currentCap - 3));
+    if (state.msdk < cost) { showToast(`💸 يحتاج ${fmt(cost)} MSDK`); return; }
+    if (!confirm(`ترقية ${f.name}؟\nطابور إنتاج: ${currentCap} → ${currentCap+1}\nالسعر: ${fmt(cost)} MSDK`)) return;
+    setState(s => ({ ...s, msdk: s.msdk - cost,
+      buildings: s.buildings.map(x => x.id === b.id ? { ...x, queueCap: currentCap+1 } : x) }));
+    addXP(120);
+    showToast(`⬆️ ${f.name} - طابور ${currentCap+1}`);
+  };
+
+  /* ====== زراعة - حصاد - سقي - تسميد ====== */
+  const openPlanting = (b)=>{
+    if (b.dead) { showToast('☠️ النبات ميت! انقر "تنظيف" لإعادة الزراعة'); return; }
+    setPlanting(b.id); setSelected(null);
+  };
+  const cleanDeadPlot = (b)=>{
+    setState(s => ({ ...s, buildings: s.buildings.map(x => x.id === b.id
+      ? {...x, planted:null, dead:false, missedWaters:0, harvestsSinceFert:0, fertilized:false } : x) }));
+    setSelected(null);
+    showToast('🧹 نظفت الأرض - يمكنك الزراعة');
+  };
+  const plantSeed = (plotId, cropKey)=>{
+    const have = state.crops[cropKey]||0;
+    if (have <= 0) { showToast(`❌ لا تملك ${CROPS[cropKey].name} - اشتر من السوق أو احصد`); return; }
+    const newCrops = { ...state.crops, [cropKey]: have-1 };
+    if (newCrops[cropKey] <= 0) delete newCrops[cropKey];
+    setState(s => ({ ...s,
+      crops: newCrops,
+      buildings: s.buildings.map(b => b.id === plotId
+        ? { ...b, planted: cropKey, plantedAt: Date.now(),
+            lastWatered: 0, fertilized: (b.harvestsSinceFert >= 5 ? false : b.fertilized) } : b) }));
+    setPlanting(null);
+    showToast(`🌱 زرعت ${CROPS[cropKey].name}`);
+  };
+  const waterPlot = (b)=>{
+    if (!b.planted || b.dead) return;
+    const cost = 50;
+    if (state.msdk < cost) { showToast(`💸 السقي ${cost} MSDK`); return; }
+    if (!confirm(`سقي القطعة بـ ${cost} MSDK؟ (فعّال لـ 5 حصادات)`)) return;
+    setState(s => ({ ...s, msdk: s.msdk - cost,
+      buildings: s.buildings.map(x => x.id === b.id
+        ? {...x, lastWatered: Date.now(), waterHarvestsLeft: 5, missedWaters: 0} : x) }));
+    showToast('💧 سقيت - +20% سرعة لـ 5 حصادات');
+    setSelected(null);
+  };
+  const fertilizePlot = (b)=>{
+    const cost = 50;
+    if (state.msdk < cost) { showToast(`💸 السماد ${cost} MSDK`); return; }
+    if (!confirm(`سماد الأرض بـ ${cost} MSDK؟ (فعّال لـ 5 حصادات)`)) return;
+    setState(s => ({ ...s, msdk: s.msdk - cost,
+      buildings: s.buildings.map(x => x.id === b.id
+        ? {...x, fertilized:true, fertHarvestsLeft: 5, harvestsSinceFert:0} : x) }));
+    showToast('🌿 سمدت - مضاعف الناتج لـ 5 حصادات');
+    setSelected(null);
+  };
+  /* حساب وقت النمو الفعلي - السقي والسماد محسوبان بعدد الحصادات المتبقية */
+  const effectiveGrowTime = (b)=>{
+    const c = CROPS[b.planted]; if (!c) return 0;
+    const baseTime = c.time * tMul;
+    const watered = (b.waterHarvestsLeft||0) > 0;
+    const fertBoost = b.fertilized ? 0.85 : 1.0;
+    const waterBoost = watered ? 0.8 : 1.0;
+    return baseTime * fertBoost * waterBoost;
+  };
+  const harvestPlot = (b, evt)=>{
+    if (!b.planted || b.dead) return;
+    const c = CROPS[b.planted];
+    const elapsed = (Date.now() - b.plantedAt)/1000;
+    if (elapsed < effectiveGrowTime(b)) return;
+    if (totalInv() >= invCap()) { showToast('❌ المخزون ممتلئ - بِع أو اشترِ صومعة'); return; }
+
+    const wasWatered = (b.waterHarvestsLeft||0) > 0;
+    let newWaterLeft = Math.max(0, (b.waterHarvestsLeft||0) - 1);
+    let newFertLeft  = Math.max(0, (b.fertHarvestsLeft||0) - 1);
+
+    // إن لم يُسقَ في حصاد ما، يزيد عداد فقدان السقي
+    let newMissed = b.missedWaters || 0;
+    if (!wasWatered) newMissed += 1; else newMissed = 0;
+    let dead = newMissed >= 3;
+
+    // الإنتاج: إذا مسمد ×2، عادي ×1
+    let yieldQty = (b.fertHarvestsLeft||0) > 0 ? 2 : 1;
+    let fertilized = newFertLeft > 0;
+
+    if (yieldQty > 0) {
+      flyText(`+${yieldQty} ${c.emoji}`, evt?.clientX, evt?.clientY, '#fff176');
+    }
+    setState(s => ({ ...s,
+      crops: { ...s.crops, [b.planted]: (s.crops[b.planted]||0) + yieldQty },
+      buildings: s.buildings.map(x => x.id === b.id
+        ? {...x, planted:null, plantedAt:0,
+            waterHarvestsLeft: newWaterLeft,
+            fertHarvestsLeft: newFertLeft,
+            missedWaters:newMissed,
+            fertilized, dead} : x) }));
+    addXP(c.xp);
+    if (dead) showToast('☠️ النبات مات! نسيت السقي 3 مرات');
+  };
+
+  /* ====== إدارة الحضيرة (شراء/بيع حيوانات) ====== */
+  const openPenMgmt = (b)=>{ setPenFor(b.id); setSelected(null); };
+  const buyAnimal = (penId)=>{
+    const b = state.buildings.find(x => x.id === penId);
+    if (!b) return;
+    const def = PEN_TYPES[b.type]; const a = ANIMALS[def.animal];
+    const cap = def.baseCap + (b.level-1) * def.capPerLevel;
+    if ((b.animals||[]).length >= cap) { showToast('❌ الحضيرة ممتلئة - رقّها'); return; }
+    if (state.msdk < a.cost) { showToast(`💸 يحتاج ${fmt(a.cost)} MSDK`); return; }
+    setState(s => ({ ...s, msdk: s.msdk - a.cost,
+      buildings: s.buildings.map(x => x.id === penId
+        ? { ...x, animals: [...(x.animals||[]), { id: Date.now()+Math.random(), addedAt:Date.now(), lastCollect:Date.now() }] }
+        : x) }));
+    showToast(`✅ اشتريت ${a.name}`);
+    addXP(20);
+  };
+  const sellAnimal = (penId, animalId)=>{
+    const b = state.buildings.find(x => x.id === penId);
+    if (!b) return;
+    const def = PEN_TYPES[b.type]; const a = ANIMALS[def.animal];
+    const refund = Math.floor(a.cost * 0.6);
+    setState(s => ({ ...s, msdk: s.msdk + refund,
+      buildings: s.buildings.map(x => x.id === penId
+        ? { ...x, animals: x.animals.filter(an => an.id !== animalId) } : x) }));
+    showToast(`💰 بعت ${a.name} مقابل ${fmt(refund)} MSDK`);
+  };
+  const collectFromAnimal = (penId, animalId, evt)=>{
+    const b = state.buildings.find(x => x.id === penId); if (!b) return;
+    const def = PEN_TYPES[b.type]; const a = ANIMALS[def.animal];
+    const animal = b.animals.find(an => an.id === animalId); if (!animal) return;
+    const elapsed = (Date.now() - animal.lastCollect)/1000;
+    if (elapsed < a.cycle * tMul) return;
+    if (totalInv() >= invCap()) { showToast('❌ المخزون ممتلئ'); return; }
+    flyText(`+1 ${a.pEmoji}`, evt?.clientX, evt?.clientY, '#81d4fa');
+    setState(s => ({ ...s,
+      crops: { ...s.crops, [a.pName]: (s.crops[a.pName]||0) + 1 },
+      buildings: s.buildings.map(x => x.id === penId
+        ? { ...x, animals: x.animals.map(an => an.id === animalId ? {...an, lastCollect:Date.now()} : an) }
+        : x) }));
+    addXP(a.xp);
+  };
+
+  /* ====== المصانع - بدء/جمع وصفة ====== */
+  const openFactory = (b)=>{ setFactoryFor(b.id); setSelected(null); };
+  const startRecipe = (factoryId, recipeId)=>{
+    const b = state.buildings.find(x => x.id === factoryId); if (!b) return;
+    const f = FACTORIES[b.type]; const r = f.recipes.find(rc => rc.id === recipeId); if (!r) return;
+    const qCap = b.queueCap || 3;
+    if ((b.queue||[]).length >= qCap) { showToast(`❌ الطابور ممتلئ (${qCap})`); return; }
+    // تحقق من المواد
+    const have = {...state.crops, ...state.products};
+    for (const [k,n] of Object.entries(r.in)) {
+      if ((have[k]||0) < n) { showToast(`❌ تحتاج ${n} ${PRODUCTS[k]||k}`); return; }
+    }
+    // اخصم
+    const newCrops = {...state.crops}, newProducts = {...state.products};
+    for (const [k,n] of Object.entries(r.in)) {
+      if (newCrops[k]) newCrops[k] -= n;
+      else if (newProducts[k]) newProducts[k] -= n;
+      if (newCrops[k]<=0) delete newCrops[k];
+      if (newProducts[k]<=0) delete newProducts[k];
+    }
+    setState(s => ({ ...s, crops: newCrops, products: newProducts,
+      buildings: s.buildings.map(x => x.id === factoryId
+        ? { ...x, queue: [...(x.queue||[]), { recipeId, startedAt: Date.now() }] } : x) }));
+    showToast('🏭 بدأ التصنيع...');
+  };
+  const collectRecipe = (factoryId, queueIdx)=>{
+    const b = state.buildings.find(x => x.id === factoryId); if (!b) return;
+    const f = FACTORIES[b.type]; const item = b.queue[queueIdx];
+    const r = f.recipes.find(rc => rc.id === item.recipeId);
+    if (!r) return;
+    const elapsed = (Date.now() - item.startedAt)/1000;
+    if (elapsed < r.time * tMul) return;
+    if (totalInv() >= invCap()) { showToast('❌ المخزون ممتلئ'); return; }
+    const newProducts = {...state.products};
+    for (const [k,n] of Object.entries(r.out)) {
+      newProducts[k] = (newProducts[k]||0) + n;
+    }
+    setState(s => ({ ...s, products: newProducts,
+      buildings: s.buildings.map(x => x.id === factoryId
+        ? { ...x, queue: x.queue.filter((_,i) => i !== queueIdx) } : x) }));
+    addXP(r.xp);
+    flyText(`+${Object.values(r.out)[0]} ${PRODUCT_EMOJI[Object.keys(r.out)[0]]}`, null, null, '#ffd54f');
+    showToast(`✅ ${PRODUCTS[Object.keys(r.out)[0]]} جاهز!`);
+  };
+
+  /* ====== المتجر / كشك البيع (9 صناديق) ====== */
+  const openStandSlot = (idx)=>{
+    const slot = state.myStand[idx];
+    if (slot && slot.status === 'sold') {
+      // اجمع الأموال
+      setState(s => ({ ...s, msdk: s.msdk + slot.price * slot.qty,
+        myStand: s.myStand.map((sl,i) => i===idx ? null : sl),
+        walletHistory: [{
+          id: 'sale_'+Date.now(), type:'بيع', amount: slot.price*slot.qty,
+          item: slot.item, time: Date.now(), note:'بيع لـ '+(slot.soldTo||'لاعب')
+        }, ...(s.walletHistory||[])].slice(0,50),
+      }));
+      flyText(`+${fmt(slot.price*slot.qty)} 🪙`, null, null, '#ffd54f');
+      showToast(`💰 جمعت ${fmt(slot.price*slot.qty)} MSDK من البيع`);
+      return;
+    }
+    if (slot && slot.status === 'listed') {
+      // إلغاء؟
+      if (!confirm('إلغاء عرض البيع وإرجاع السلعة للمخزون؟')) return;
+      const targetCat = state.crops[slot.item] !== undefined ? 'crops' : 'products';
+      setState(s => ({ ...s,
+        [targetCat]: { ...s[targetCat], [slot.item]: (s[targetCat][slot.item]||0) + slot.qty },
+        myStand: s.myStand.map((sl,i) => i===idx ? null : sl) }));
+      showToast('🔙 ألغيت البيع وأُعيدت السلعة');
+      return;
+    }
+    // فارغ → افتح modal اختيار السلعة
+    setStand({ idx });
+  };
+  const listInStand = (idx, item, qty, price)=>{
+    if (qty <= 0 || price <= 0) { showToast('❌ كمية أو سعر غير صحيح'); return; }
+    const cat = state.crops[item] !== undefined ? 'crops' : 'products';
+    if ((state[cat][item]||0) < qty) { showToast('❌ ليس لديك ما يكفي'); return; }
+    const newCat = { ...state[cat], [item]: state[cat][item] - qty };
+    if (newCat[item] <= 0) delete newCat[item];
+    setState(s => ({ ...s,
+      [cat]: newCat,
+      myStand: s.myStand.map((sl,i) => i===idx
+        ? { item, qty, price, status:'listed', listedAt:Date.now() } : sl) }));
+    showToast(`📌 عُرض ${qty} ${PRODUCTS[item]||item} بسعر ${fmt(price)} MSDK`);
+    setStand(null);
+  };
+
+  /* ====== شراء من السوق - عبر Backend ====== */
+  const buyFromMarket = async (listing)=>{
+    if (state.msdk < listing.price * listing.qty) { showToast('💸 لا يكفي MSDK'); return; }
+    if (totalInv() + listing.qty > invCap()) { showToast('❌ المخزون لن يستوعب'); return; }
+    try {
+      await API.buyListing(listing.id);
+      showToast(`✅ اشتريت ${listing.qty} ${PRODUCTS[listing.item]||listing.item} من ${listing.seller_name}`);
+      // أعد تحميل الـ state من الخادم لمزامنة المخزون والرصيد
+      refreshState();
+      refreshMarket();
+    } catch(e) {
+      showToast('❌ '+e.message);
+    }
+  };
+
+  /* ====== عرض سلعة في الكشك - عبر Backend ====== */
+  const listInStandReal = async (idx, item, qty, price) => {
+    try {
+      await API.listItem(item, qty, price);
+      showToast(`📌 عُرض ${qty}× ${PRODUCTS[item]||item} في السوق العالمي`);
+      // أعد تحميل الـ state ليُحدث المخزون
+      refreshState();
+      refreshMarket();
+      setStand(null);
+    } catch(e) {
+      showToast('❌ '+e.message);
+    }
+  };
+
+  /* ====== المهام ====== */
+  useEffect(()=>{
+    if (Date.now() > state.missionsRefreshAt && state.missions.length < 3) {
+      const newMissions = [];
+      for (let i=state.missions.length; i<3; i++) {
+        const tpl = MISSION_TEMPLATES[Math.floor(Math.random()*MISSION_TEMPLATES.length)];
+        // 30% أكثر من القيمة المعطاة (توازن لصالح اللعبة)
+        const baseVal = baseValueOf(tpl.item) * tpl.qty;
+        // المكافأة 70% من قيمة السوق (اللاعب يدفع 30% أكثر)
+        const reward = Math.floor(baseVal * 0.70);
+        newMissions.push({
+          id: 'm_'+Date.now()+'_'+i,
+          ...tpl, reward, xp: tpl.baseXP,
+        });
+      }
+      setState(s => ({ ...s, missions: [...s.missions, ...newMissions],
+        missionsRefreshAt: Date.now() + 4*HOUR*1000 }));
+    }
+  }, [state.missions.length, state.missionsRefreshAt]);
+  const completeMission = (mId)=>{
+    const m = state.missions.find(x => x.id === mId); if (!m) return;
+    const cat = CROPS[m.item] ? 'crops' : 'products';
+    if ((state[cat][m.item]||0) < m.qty) { showToast(`❌ تحتاج ${m.qty} ${PRODUCTS[m.item]}`); return; }
+    const newCat = { ...state[cat], [m.item]: state[cat][m.item] - m.qty };
+    if (newCat[m.item] <= 0) delete newCat[m.item];
+    setState(s => ({ ...s, msdk: s.msdk + m.reward,
+      [cat]: newCat,
+      missions: s.missions.filter(x => x.id !== mId),
+      walletHistory: [{
+        id:'mis_'+Date.now(), type:'مكافأة مهمة', amount: m.reward,
+        item: m.item, time: Date.now(), note:'مهمة: '+m.qty+' '+PRODUCTS[m.item]
+      }, ...(s.walletHistory||[])].slice(0,50),
+    }));
+    addXP(m.xp);
+    showToast(`🏆 مهمة منجزة! +${fmt(m.reward)} MSDK`);
+    pushAdminLog('مهمة منجزة: '+fmt(m.reward));
+  };
+
+  /* ====== المحفظة - عبر Backend ====== */
+  const depositMSDK = async (amount)=>{
+    amount = parseInt(amount, 10);
+    if (!amount || amount <= 0) { showToast('❌ أدخل مبلغاً صحيحاً'); return; }
+    try {
+      await API.deposit(amount);
+      showToast(`💎 تم شحن ${fmt(amount)} MSDK`);
+      refreshState();
+    } catch(e) { showToast('❌ '+e.message); }
+  };
+  const withdrawMSDK = async (amount, address='wallet')=>{
+    amount = parseInt(amount, 10);
+    if (!amount || amount <= 0) return;
+    if (state.msdk < amount) { showToast('❌ رصيد غير كاف'); return; }
+    try {
+      await API.withdraw(amount, address);
+      showToast(`💸 طلب سحب ${fmt(amount)} MSDK (قيد المعالجة)`);
+      refreshState();
+    } catch(e) { showToast('❌ '+e.message); }
+  };
+
+  /* ====== دردشة ====== */
+  const sendChat = ()=>{
+    if (!chatInput.trim()) return;
+    if (API.socket) API.socket.emit('chat:send', { text: chatInput.trim() });
+    setChatInput('');
+  };
+
+  /* ====== سجل الأدمن ====== */
+  const pushAdminLog = (msg)=>{
+    setState(s => ({ ...s, adminLog: [{
+      id: Date.now()+'_'+Math.random(), time: Date.now(), msg, user: user.name
+    }, ...(s.adminLog||[])].slice(0, 100) }));
+  };
+
+  /* ====== إعادة لعبة جديدة ====== */
+  const resetGame = ()=>{
+    if (!confirm('بدء قرية جديدة؟ ستفقد كل التقدم!')) return;
+    localStorage.removeItem(SAVE_KEY+'_'+user.name);
+    location.reload();
+  };
+
+  /* ============== العرض ============== */
+  // إذا لم يُحمّل state بعد، اعرض شاشة تحميل
+  if (!state) return (
+    <div style={{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
+      background:'linear-gradient(135deg,#1b5e20,#ffa000)',color:'#fff',fontSize:24,fontWeight:900,flexDirection:'column'}}>
+      <div style={{fontSize:60,marginBottom:10}}>🚜</div>
+      جاري تحميل مزرعتك من الخادم...
+      <div style={{fontSize:14,marginTop:10,opacity:0.8}}>{user.name}</div>
+    </div>
+  );
+  const xpNeeded = xpForLevel(state.level);
+  const groundW = (state.farmSize || 12) * CELL;
+  const groundH = (state.farmSize || 12) * CELL;
+  const cancelPlace = ()=>setPlacing(null);
+  const isAdmin = user.type === 'admin';
+
+  return (
+    <div className="world"
+      onMouseDown={onPanStart} onMouseMove={onPanMove}
+      onMouseUp={onPanEnd} onMouseLeave={onPanEnd}
+      onTouchStart={onPanStart} onTouchMove={onPanMove} onTouchEnd={onPanEnd}>
+
+      <div className="scene" ref={sceneRef} style={{
+        transform:`translate(-50%,-50%) translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotateX(35deg) rotateZ(-2deg)`,
+      }}>
+        <div className="ground" style={{ width: groundW, height: groundH }}>
+          {placing && Array.from({length: (state.farmSize||12)*(state.farmSize||12)}).map((_,i)=>{
+            const w = state.farmSize || 12;
+            const gx = i % w, gy = Math.floor(i/w);
+            const def = defOf(placing.type);
+            const ok = inBounds(gx, gy, def.size||1) && !isOccupied(gx, gy, def.size||1, placing.fromId);
+            return <div key={`c-${gx}-${gy}`} className={`cell ${ok?'ok':'bad'}`}
+              style={{ left: gx*CELL, top: gy*CELL, width: CELL, height: CELL }}
+              onClick={(e)=>{ e.stopPropagation(); if (ok) tryPlace(gx, gy); }} />;
+          })}
+
+          {state.buildings.map(b=>{
+            const def = defOf(b.type);
+            const sz = (def.size||1) * CELL;
+            const isPlot = def.isPlot;
+            const isFactory = !!FACTORIES[b.type];
+            const isPen = !!PEN_TYPES[b.type];
+            const planted = isPlot && b.planted;
+            const elapsedPlot = planted ? (Date.now() - b.plantedAt)/1000 : 0;
+            const grown = planted && elapsedPlot >= effectiveGrowTime(b);
+            // دجاجة جاهزة لأي حيوان
+            const animalsReady = isPen && (b.animals||[]).filter(an =>
+              (Date.now() - an.lastCollect)/1000 >= ANIMALS[PEN_TYPES[b.type].animal].cycle * tMul).length;
+            const queueReady = isFactory && (b.queue||[]).filter(q =>
+              (Date.now() - q.startedAt)/1000 >= FACTORIES[b.type].recipes.find(r => r.id === q.recipeId).time * tMul).length;
+            const eSize = isPlot ? 30 : (28 + Math.min(b.level||1, 8) * 2);
+            let plotClass = '';
+            if (isPlot) {
+              if (b.dead) plotClass = 'plot-dead';
+              else if (!planted) plotClass = 'plot-empty';
+              else if (grown) plotClass = 'plot-ready';
+              else plotClass = 'plot-growing';
+            }
+            return (
+              <div key={b.id} className="bld"
+                style={{ left: b.x*CELL, top: b.y*CELL, width: sz, height: sz }}
+                onClick={(e)=>{
+                  e.stopPropagation();
+                  if (placing) return;
+                  if (dragRef.current && dragRef.current.moved) return;
+                  if (isPlot) {
+                    if (b.dead) setSelected(s => s===b.id ? null : b.id);
+                    else if (!planted) openPlanting(b);
+                    else if (grown) harvestPlot(b, e);
+                    else setSelected(s => s===b.id ? null : b.id);
+                  } else {
+                    // مباني وحضائر ومصانع: اعرض القائمة فيها (نقل/هدم/تصنيع/ترقية)
+                    setSelected(s => s===b.id ? null : b.id);
+                  }
+                }}>
+                {isPlot && <div className={plotClass} style={{position:'absolute',inset:2,borderRadius:8}} />}
+                {!isPlot && (def.size||1)===2 && (
+                  <div style={{position:'absolute',inset:4,background:'rgba(255,255,255,0.06)',borderRadius:8}}/>
+                )}
+                <div className="bld-art" style={{ fontSize:eSize+'px', position:'relative', zIndex:2 }}>
+                  {isPlot && b.dead ? '☠️' : (isPlot && planted ? CROPS[b.planted].emoji : (isPlot && !planted ? '➕' : def.emoji))}
+                </div>
+                {!isPlot && <div className="bld-base" />}
+                {!def.decoration && !isPlot && (PEN_TYPES[b.type] || def.upgradeCost) &&
+                  <div className="lvl-tag">م{b.level||1}</div>}
+                {grown && <div className="ready-bubble">🌾 جاهز!</div>}
+                {isPlot && planted && !grown && !b.dead && (
+                  <div className="ready-bubble" style={{background:'linear-gradient(135deg,#a5d6a7,#66bb6a)',color:'#1b5e20'}}>
+                    {fmtTime(effectiveGrowTime(b) - elapsedPlot)}
+                  </div>)}
+                {animalsReady > 0 && <div className="ready-bubble">{animalsReady} 🥚</div>}
+                {queueReady > 0 && <div className="ready-bubble">{queueReady} 📦</div>}
+                {selected === b.id && (
+                  <div style={{position:'absolute', inset:-4, border:'3px solid #ffeb3b',
+                    borderRadius: 10, animation: 'ringPulse 1s infinite', pointerEvents:'none', zIndex:3}}/>)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* الشريط العلوي */}
+      <div className="topbar">
+        <div style={{display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
+          <span className="stat-pill">🪙 {fmt(state.msdk)}</span>
+          <span className="stat-pill stat-xp">⭐{state.level}</span>
+          <div style={{display:'flex',alignItems:'center',gap:4,background:'rgba(0,0,0,0.4)',
+                       padding:'3px 8px',borderRadius:14,border:'2px solid #4fc3f7',minWidth:140}}>
+            <span style={{fontSize:10,color:'#fff',fontWeight:900}}>XP</span>
+            <div style={{flex:1,height:8,background:'rgba(255,255,255,0.2)',borderRadius:4,overflow:'hidden'}}>
+              <div style={{height:'100%',width:Math.min(100,(state.xp/xpNeeded)*100)+'%',
+                           background:'linear-gradient(90deg,#4fc3f7,#1976d2)',transition:'width 0.4s'}}/>
+            </div>
+            <span style={{fontSize:10,color:'#fff',fontWeight:900}}>{state.xp}/{xpNeeded}</span>
+          </div>
+          <span className="stat-pill stat-inv">📦 {totalInv()}/{invCap()}</span>
+          <span className="stat-pill" style={{fontSize:11}}>👤 {user.name}{isAdmin?' 👑':''}</span>
+        </div>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          <button className="icon-btn" onClick={()=>setZoom(z=>Math.min(1.5, z+0.15))}>＋</button>
+          <button className="icon-btn" onClick={()=>setZoom(z=>Math.max(0.3, z-0.15))}>−</button>
+          <button className="icon-btn" onClick={()=>{ setZoom(0.7); setPan({x:0,y:0}); }}>⊙</button>
+          <button className="icon-btn" onClick={onLogout} title="خروج"
+            style={{background:'linear-gradient(180deg,#9e9e9e,#424242)',borderColor:'#212121'}}>🚪</button>
+          <button className="icon-btn" onClick={resetGame} title="إعادة"
+            style={{background:'linear-gradient(180deg,#f44336,#b71c1c)',borderColor:'#7f0000'}}>↺</button>
+        </div>
+      </div>
+
+      {toast && <div className="toast">{toast}</div>}
+
+      {placing && (
+        <>
+          <div className="placing-overlay" />
+          <div className="place-banner">
+            <span>🏗 وضع {defOf(placing.type).name}</span>
+            <button onClick={cancelPlace} style={{padding:'3px 10px',borderRadius:8,
+              background:'#fff',color:'#bf360c',border:'2px solid #fff',fontWeight:900,cursor:'pointer'}}>إلغاء ✖</button>
+          </div>
+        </>
+      )}
+
+      {/* أزرار سفلية - HUD */}
+      <div className="hud-bottom">
+        <button className="hud-btn" onClick={()=>{setPanel('build'); setPanelTab('plot');}}>🛒 سوق البناء</button>
+        <button className="hud-btn" onClick={()=>setPanel('market')}>🏛 السوق العالمي</button>
+        <button className="hud-btn" onClick={()=>setPanel('stand')}>🏪 كشكي ({state.myStand.filter(s=>s).length}/9)</button>
+        <button className="hud-btn" onClick={()=>setPanel('missions')}>📋 المهام ({state.missions.length})</button>
+        <button className="hud-btn" onClick={()=>setPanel('inventory')}>🎒 المخزون</button>
+        <button className="hud-btn" onClick={()=>setPanel('wallet')}>💼 المحفظة</button>
+        <button className="hud-btn" onClick={()=>setPanel('chat')}>💬 الدردشة</button>
+        {isAdmin && <button className="hud-btn alert" onClick={()=>setPanel('admin')}>👑 الأدمن</button>}
+        <button className="hud-btn" onClick={buyLand}
+          style={state.landPlotsBought===0?{background:'linear-gradient(180deg,#a5d6a7,#2e7d32)',color:'#fff',borderColor:'#1b5e20'}:{}}>
+          📐 شراء أرض {state.landPlotsBought===0
+            ? '(مجاني! 🎁)'
+            : state.landPlotsBought >= LAND_MAX_PURCHASES
+              ? '(الحد الأقصى)'
+              : '('+fmt(landCostFor(state.landPlotsBought))+' 🪙)'}
+        </button>
+      </div>
+
+      {/* قائمة بذرة */}
+      {planting && <PlantingModal
+        plot={state.buildings.find(b => b.id === planting)}
+        crops={CROPS} inventory={state.crops} unlocked={state.unlockedCrops}
+        level={state.level} onPlant={(k)=>plantSeed(planting, k)}
+        onClose={()=>setPlanting(null)} fmtTime={fmtTime} fmt={fmt} />}
+
+      {/* قائمة مبنى مختار */}
+      {selected && !placing && (() => {
+        const b = state.buildings.find(x => x.id === selected); if (!b) return null;
+        const def = defOf(b.type);
+        const isPlot = def.isPlot;
+        const isPen = !!PEN_TYPES[b.type];
+        const isSilo = b.type === 'silo';
+        const isFactory = !!FACTORIES[b.type];
+        const showWater = isPlot && b.planted && !b.dead;
+        const showFert = isPlot && !b.dead && (b.fertHarvestsLeft||0) === 0;
+        const showClean = isPlot && b.dead;
+        // حساب التكاليف للعرض
+        const penCost = isPen ? PEN_TYPES[b.type].upgradeCost(b.level) : 0;
+        const siloCost = isSilo ? Math.floor(SILO_BASE_COST * Math.pow(1.6, b.level)) : 0;
+        const factCost = isFactory ? Math.floor((FACTORIES[b.type].baseCost || 1000) * 0.6 * Math.pow(1.7, ((b.queueCap||3) - 3))) : 0;
+        const penMaxed = isPen && (PEN_TYPES[b.type].baseCap + (b.level-1)*PEN_TYPES[b.type].capPerLevel) >= 5;
+        const factMaxed = isFactory && (b.queueCap||3) >= 5;
+        return (
+          <div className="bld-menu">
+            <h4>{def.emoji} {def.name} {b.level && b.level>1 && `(م${b.level})`}</h4>
+            {def.desc && <div style={{fontSize:11, marginBottom:6}}>{def.desc}</div>}
+            {isPlot && b.planted && !b.dead && (
+              <div style={{fontSize:11, marginBottom:6}}>
+                🌱 {CROPS[b.planted].name} - {fmtTime(effectiveGrowTime(b) - (Date.now()-b.plantedAt)/1000)}
+                {(b.waterHarvestsLeft||0) > 0 && ` • 💧 سقي ${b.waterHarvestsLeft}/5`}
+                {(b.fertHarvestsLeft||0) > 0 && ` • 🌿 سماد ${b.fertHarvestsLeft}/5`}
+                {b.missedWaters>0 && ` • ⚠️ سقي مفقود ${b.missedWaters}/3`}
+              </div>
+            )}
+            {isPlot && b.dead && <div style={{fontSize:11,color:'#b71c1c',marginBottom:6}}>☠️ النبات ميت</div>}
+            {isPen && (
+              <div style={{fontSize:11, marginBottom:6}}>
+                🐾 الحيوانات: {(b.animals||[]).length}/{PEN_TYPES[b.type].baseCap + (b.level-1)*PEN_TYPES[b.type].capPerLevel} (الأقصى 5)
+              </div>
+            )}
+            {isFactory && (
+              <div style={{fontSize:11, marginBottom:6}}>
+                🏭 طابور: {(b.queue||[]).length}/{b.queueCap||3} (الأقصى 5)
+              </div>
+            )}
+            <div className="row">
+              {showWater && <button className="menu-btn mb-water" onClick={()=>waterPlot(b)}
+                disabled={state.msdk < 50}>💧 سقي (50)</button>}
+              {showFert && <button className="menu-btn mb-fert" onClick={()=>fertilizePlot(b)}
+                disabled={state.msdk < 50}>🌿 سماد (50)</button>}
+              {showClean && <button className="menu-btn mb-cl" onClick={()=>cleanDeadPlot(b)}>🧹 تنظيف</button>}
+              {isPen && !penMaxed && <button className="menu-btn mb-up" onClick={()=>upgradePen(b)}
+                disabled={state.msdk < penCost}>
+                ⬆ ترقية ({fmt(penCost)} 🪙)
+              </button>}
+              {isPen && penMaxed && <span style={{fontSize:11,color:'#1b5e20',fontWeight:900}}>💎 الحد الأقصى</span>}
+              {isSilo && <button className="menu-btn mb-up" onClick={()=>upgradeSilo(b)}
+                disabled={state.msdk < siloCost}>
+                ⬆ ترقية (+50 سعة، {fmt(siloCost)} 🪙)
+              </button>}
+              {isFactory && !factMaxed && <button className="menu-btn mb-up" onClick={()=>upgradeFactory(b)}
+                disabled={state.msdk < factCost}>
+                ⬆ ترقية طابور ({fmt(factCost)} 🪙)
+              </button>}
+              {isFactory && factMaxed && <span style={{fontSize:11,color:'#1b5e20',fontWeight:900}}>💎 طابور أقصى</span>}
+              {isFactory && <button className="menu-btn mb-cl" onClick={()=>{ setSelected(null); openFactory(b); }}>🏭 تصنيع</button>}
+              {isPen && <button className="menu-btn mb-cl" onClick={()=>{ setSelected(null); openPenMgmt(b); }}>🐾 إدارة</button>}
+              <button className="menu-btn mb-mv" onClick={()=>startMove(b)}>↔ نقل</button>
+              {b.type !== 'townhall' && <button className="menu-btn mb-rm" onClick={()=>removeBld(b)}>🗑 هدم</button>}
+              <button className="menu-btn mb-cl" onClick={()=>setSelected(null)}>إغلاق</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* لوحات */}
+      {panel === 'build' && <BuildPanel state={state} setPanelTab={setPanelTab} panelTab={panelTab}
+        startBuild={startBuild} onClose={()=>setPanel(null)} fmt={fmt}/>}
+      {panel === 'market' && <MarketPanel listings={serverMarket} buyFromMarket={buyFromMarket}
+        onClose={()=>setPanel(null)} fmt={fmt} fmtTime={fmtTime}/>}
+      {panel === 'stand' && <StandPanel state={state} openStandSlot={openStandSlot}
+        onClose={()=>setPanel(null)} fmt={fmt}/>}
+      {panel === 'missions' && <MissionsPanel state={state} completeMission={completeMission}
+        onClose={()=>setPanel(null)} fmt={fmt}/>}
+      {panel === 'inventory' && <InventoryPanel state={state} totalInv={totalInv} invCap={invCap}
+        onClose={()=>setPanel(null)} fmt={fmt}/>}
+      {panel === 'wallet' && <WalletPanel state={state} user={user} depositMSDK={depositMSDK}
+        withdrawMSDK={withdrawMSDK} onClose={()=>setPanel(null)} fmt={fmt}
+        showToast={showToast} refreshState={refreshState}/>}
+      {panel === 'chat' && <ChatPanel chatMessages={chatHistory} user={user} chatInput={chatInput}
+        setChatInput={setChatInput} sendChat={sendChat} onClose={()=>setPanel(null)}/>}
+      {panel === 'admin' && isAdmin && <AdminPanel state={state} setState={setState}
+        onClose={()=>setPanel(null)} fmt={fmt}/>}
+
+      {factoryFor && <FactoryModal
+        building={state.buildings.find(b => b.id === factoryFor)} state={state}
+        startRecipe={startRecipe} collectRecipe={collectRecipe}
+        onClose={()=>setFactoryFor(null)} fmt={fmt} fmtTime={fmtTime} tMul={tMul}/>}
+
+      {penFor && <PenModal building={state.buildings.find(b => b.id === penFor)}
+        state={state} buyAnimal={buyAnimal} sellAnimal={sellAnimal}
+        collectFromAnimal={collectFromAnimal} onClose={()=>setPenFor(null)}
+        fmt={fmt} fmtTime={fmtTime} tMul={tMul}/>}
+
+      {stand && <ListItemModal idx={stand.idx} state={state}
+        onList={(item, qty, price)=>listInStandReal(stand.idx, item, qty, price)}
+        onClose={()=>setStand(null)} fmt={fmt}/>}
+    </div>
+  );
 }
 
-// ========== WITHDRAW ==========
-function renderWithdraw(c,d){
-  let html='<div class="card"><div class="card-title">💸 سحب MSDK</div>';
-  html+='<div style="text-align:center;margin-bottom:10px"><div style="font-size:10px;color:var(--text3)">رصيدك الحالي</div>';
-  html+='<div style="font-size:24px;font-weight:700;color:var(--accent)">'+(d.msdk||0).toLocaleString()+' MSDK</div></div>';
-  html+='<input type="number" id="wdAmt" placeholder="المبلغ (الحد الأدنى 100 MSDK)" min="100">';
-  html+='<input id="wdWallet" placeholder="عنوان المحفظة" style="direction:ltr">';
-  html+='<select id="wdCur"><option value="USDT_TRC20">USDT (TRC20)</option><option value="BTC">BTC</option><option value="ETH">ETH</option></select>';
-  html+='<button class="btn btn-red btn-full" onclick="doWithdraw()">طلب سحب 💸</button>';
-  html+='</div>';
-  c.innerHTML=html;
-  // Load history
-  loadWithdrawHistory(c);
-}
-async function loadWithdrawHistory(c){
-  const r=await api('/api/withdraw/history');
-  if(!Array.isArray(r)||r.length===0)return;
-  let html=c.innerHTML;
-  html+='<div class="card"><div class="card-title">📋 سجل السحب</div>';
-  r.forEach(h=>{
-    html+='<div class="history-item"><div><div style="font-size:12px;font-weight:700">'+h.amount+' MSDK</div>';
-    html+='<div style="font-size:9px;color:var(--text3)">'+h.currency+' → '+h.walletAddress.substring(0,12)+'...</div></div>';
-    html+='<span class="status-badge status-'+h.status+'">'+(h.status==='approved'?'مقبول ✅':h.status==='rejected'?'مرفوض ❌':'قيد المراجعة ⏳')+'</span></div>';
-  });
-  html+='</div>';
-  c.innerHTML=html;
-}
-async function doWithdraw(){
-  const amt=parseInt(document.getElementById('wdAmt')?.value);
-  const wallet=document.getElementById('wdWallet')?.value?.trim();
-  const cur=document.getElementById('wdCur')?.value;
-  if(!amt||amt<100){toast('الحد الأدنى 100 MSDK','error');return}
-  if(!wallet){toast('أدخل عنوان المحفظة','error');return}
-  const r=await api('/api/withdraw/request','POST',{amount:amt,walletAddress:wallet,currency:cur});
-  if(r.error){toast(r.error,'error');return}
-  toast('تم إرسال طلب السحب!','success');pollPlayer();
+/* ============== الدوال المساعدة ============== */
+function defOf(type){
+  return BUILD_DEFS[type] || PEN_TYPES[type] || FACTORIES[type] || DECORATIONS[type] ||
+    {name:type, emoji:'?', size:1, baseCost:0};
 }
 
-// ========== CHAT ==========
-let chatMsgs=[];
-async function loadChat(){const r=await api('/api/chat/messages');if(Array.isArray(r))chatMsgs=r;renderTab()}
-function renderChat(c,d){
-  let html='<div class="card" style="display:flex;flex-direction:column;min-height:350px">';
-  html+='<div class="card-title">💬 الدردشة العامة</div>';
-  html+='<div class="chat-messages" id="chatMsgs">';
-  if(chatMsgs.length===0)html+='<div class="empty">لا توجد رسائل بعد</div>';
-  else chatMsgs.forEach(m=>{
-    html+='<div class="chat-msg"><div class="chat-user">'+m.username+'</div>';
-    html+='<div class="chat-text">'+escHtml(m.message)+'</div>';
-    html+='<div class="chat-time">'+new Date(m.timestamp).toLocaleTimeString('ar')+'</div></div>';
-  });
-  html+='</div>';
-  html+='<div class="chat-input-row"><input id="chatInput" placeholder="اكتب رسالة..." onkeydown="if(event.key===\'Enter\')doSendChat()">';
-  html+='<button class="btn btn-accent btn-sm" onclick="doSendChat()">إرسال</button></div>';
-  html+='</div>';
-  c.innerHTML=html;
-  const el=document.getElementById('chatMsgs');if(el)el.scrollTop=el.scrollHeight;
-}
-function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
-async function doSendChat(){
-  const input=document.getElementById('chatInput');
-  const msg=input?.value?.trim();if(!msg)return;
-  input.value='';
-  const r=await api('/api/chat/send','POST',{message:msg});
-  if(r.error){toast(r.error,'error');return}
-  loadChat();
+const BUILD_DEFS = {
+  townhall: { name:'مركز القرية', emoji:'🏯', size:2, baseCost:0, isTH:true,
+              desc:'قلب القرية' },
+  farmplot: { name:'قطعة أرض', emoji:'🟫', size:1, baseCost:0, isPlot:true,
+              desc:'اضغطها لزرع البذور' },
+  silo: { name:'صومعة', emoji:'🏭', size:2, baseCost: SILO_BASE_COST,
+          unlockLevel: 4, desc:'تزيد سعة المخزن +50',
+          upgradeCost: lvl => Math.floor(SILO_BASE_COST*Math.pow(1.6,lvl)) },
+  fence: { name:'سور', emoji:'🪵', size:1, baseCost: 80, unlockLevel: 2 },
+  road:  { name:'ممر', emoji:'🟫', size:1, baseCost: 50, unlockLevel: 1 },
+};
+
+/* قرية جديدة افتراضية */
+function makeFreshState(user){
+  return {
+    msdk: 800, xp: 0, level: 1,
+    buildings: [
+      { id:1, type:'townhall', level:1, x:5, y:5, lastCollect:Date.now() },
+      { id:2, type:'farmplot', level:1, x:3, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 },
+      { id:3, type:'farmplot', level:1, x:4, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 },
+      { id:4, type:'farmplot', level:1, x:8, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 },
+      { id:5, type:'tree',     level:1, x:1, y:1 },
+      { id:6, type:'flowers',  level:1, x:11,y:1 },
+    ],
+    nextId: 100, farmSize: 12,
+    crops: { wheat: 3 }, products: {},
+    unlockedCrops: ['wheat'], landPlotsBought: 0,
+    myStand: Array(9).fill(null),
+    walletHistory: [], missions: [], missionsRefreshAt: 0,
+    adminLog: [], timeMul: 1,
+  };
 }
 
-// ========== ADMIN ==========
-function renderAdmin(c,d){
-  if(S.user!=='MSDK'){c.innerHTML='<div class="empty">غير مصرح</div>';return}
-  let html='<div class="card"><div class="card-title" style="color:var(--gold)">👑 لوحة الإدارة</div>';
-  html+='<div class="admin-tabs">';
-  ['stats','topups','withdrawals','grant','players'].forEach(t=>{
-    const labels={stats:'إحصائيات',topups:'طلبات الشحن',withdrawals:'طلبات السحب',grant:'منح MSDK',players:'اللاعبون'};
-    html+='<div class="admin-tab'+(S.adminTab===t?' active':'')+'" onclick="S.adminTab=\''+t+'\';renderTab()">'+labels[t]+'</div>';
+function initState(user){
+  try {
+    const saved = localStorage.getItem(SAVE_KEY+'_'+user.name);
+    if (saved) {
+      const data = JSON.parse(saved);
+      // التطبيق المتقدم للمستخدم - نمو خلفي تم بالفعل لأن الوقت يحفظ في timestamps
+      // قطع أرض جاهزة عند العودة بالفعل
+      return {
+        ...data, panel:null, selected:null, placing:null,
+        myStand: data.myStand || Array(9).fill(null),
+        npcListings: data.npcListings || [],
+        npcRefreshAt: data.npcRefreshAt || 0,
+        chatMessages: data.chatMessages || [],
+        walletHistory: data.walletHistory || [],
+        missions: data.missions || [],
+        missionsRefreshAt: data.missionsRefreshAt || 0,
+        adminLog: data.adminLog || [],
+        farmSize: data.farmSize || (12 + (data.landPlotsBought||0)),
+        timeMul: data.timeMul ?? 1,
+        // ترحيل: دمج البذور القديمة في المحاصيل
+        crops: (() => {
+          const merged = { ...(data.crops || {}) };
+          if (data.seeds) {
+            for (const [k, n] of Object.entries(data.seeds)) {
+              if (n > 0) merged[k] = (merged[k] || 0) + n;
+            }
+          }
+          return merged;
+        })(),
+        products: data.products || {},
+      };
+    }
+  } catch (e) { console.error(e); }
+  // قرية افتراضية
+  const initial = {
+    msdk: 800, xp: 0, level: 1,
+    buildings: [
+      { id:1, type:'townhall', level:1, x:5, y:5, lastCollect:Date.now() },
+      { id:2, type:'farmplot', level:1, x:3, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
+      { id:3, type:'farmplot', level:1, x:4, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
+      { id:4, type:'farmplot', level:1, x:8, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
+      { id:5, type:'tree',     level:1, x:1, y:1 },
+      { id:6, type:'flowers',  level:1, x:11,y:1 },
+    ],
+    nextId: 100, farmSize: 12,
+    crops: { wheat: 3 }, products: {},
+    unlockedCrops: ['wheat'], landPlotsBought: 0,
+    myStand: Array(9).fill(null), npcListings: [], npcRefreshAt: 0,
+    walletHistory: [], missions: [], missionsRefreshAt: 0,
+    chatMessages: [
+      { id:'sys1', user:'الجهاز', text:'مرحباً بك في MSDK Farm! ابدأ بزراعة البذور.', time:Date.now(), bot:true }
+    ],
+    adminLog: [],
+    timeMul: 1, // اضبطها 0.01 في الأدمن للاختبار
+  };
+  return initial;
+}
+
+/* ============== لوحات فرعية ============== */
+function PlantingModal({plot, crops, inventory, unlocked, level, onPlant, onClose, fmtTime, fmt}){
+  // عدد الأنواع التي يملكها اللاعب من المحاصيل القابلة للزراعة
+  const total = Object.entries(inventory||{})
+    .filter(([k,n]) => crops[k] && n>0)
+    .reduce((a,[_,n])=>a+n, 0);
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-box" onClick={(e)=>e.stopPropagation()}>
+        <button className="close-x" onClick={onClose}>✖</button>
+        <h3 style={{margin:'0 0 10px',color:'#bf360c'}}>🌱 ماذا تزرع؟</h3>
+        <div style={{fontSize:11,color:'#5d4037',marginBottom:8,padding:6,background:'#fff8e1',borderRadius:8}}>
+          💡 تنبيه: زراعة واحدة تستهلك <b>قطعة واحدة</b> من المحصول. (نفس الذي تبيعه - القمح هو القمح)
+        </div>
+        {total === 0 && <div style={{padding:12,background:'#fff3e0',borderRadius:10,marginBottom:10,textAlign:'center'}}>
+          📭 ليس لديك أي محصول للزراعة!<br/>اشتر من 🏛 السوق العالمي أو احصد ما زرعته سابقاً.
+        </div>}
+        {Object.entries(crops).map(([key, c])=>{
+          const have = (inventory||{})[key]||0;
+          const isLocked = !unlocked.includes(key);
+          if (have <= 0 && isLocked) {
+            return (
+              <div key={key} className="seed-row" style={{opacity:0.4}}>
+                <div style={{fontSize:32}}>{c.emoji}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:900}}>{c.name}</div>
+                  <div className="sub">🔒 يفتح في المستوى {c.unlockLevel}</div>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={key} className="seed-row" style={{opacity: have>0?1:0.5}}>
+              <div style={{fontSize:32}}>{c.emoji}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:900,fontSize:13}}>{c.name}</div>
+                <div className="sub">
+                  <span className="pill pill-have">عندك: {have}</span>
+                  <span className="pill pill-time">⏱ {fmtTime(c.time)}</span>
+                  <span className="pill pill-cost">يباع: {fmt(c.baseValue)}</span>
+                </div>
+              </div>
+              <button disabled={have<=0} onClick={()=>onPlant(key)} className="menu-btn mb-up">زرع 1</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BuildPanel({state, setPanelTab, panelTab, startBuild, onClose, fmt}){
+  const cats = {
+    plot: { label:'🟫 أراضٍ ومخازن', items:['farmplot','silo','fence','road'] },
+    pen: { label:'🐾 حضائر', items: Object.keys(PEN_TYPES) },
+    factory: { label:'🏭 مصانع', items: Object.keys(FACTORIES) },
+    decor: { label:'🌷 زينة', items: Object.keys(DECORATIONS) },
+  };
+  const showInfo = (key)=>{
+    const def = defOf(key);
+    const cost = def.baseCost || def.cost || 0;
+    let info = `${def.emoji} ${def.name}\nالسعر: ${fmt(cost)} MSDK`;
+    if (def.desc) info += `\n${def.desc}`;
+    if (def.unlockLevel) info += `\nيفتح في المستوى: ${def.unlockLevel}`;
+    if (FACTORIES[key]) {
+      info += `\n\nالوصفات:`;
+      FACTORIES[key].recipes.forEach(r=>{
+        const inS = Object.entries(r.in).map(([k,n])=>`${n}× ${PRODUCTS[k]||k}`).join('+');
+        const outS = Object.entries(r.out).map(([k,n])=>`${n}× ${PRODUCTS[k]||k}`).join('+');
+        info += `\n• ${inS} → ${outS} (${r.time/3600}س, ${fmt(r.value)} MSDK)`;
+      });
+    }
+    if (PEN_TYPES[key]) {
+      info += `\nسعة بداية: ${PEN_TYPES[key].baseCap}\n+${PEN_TYPES[key].capPerLevel} لكل ترقية\nحيوان: ${ANIMALS[PEN_TYPES[key].animal].name}`;
+    }
+    alert(info);
+  };
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>🛒 سوق البناء</h3>
+      <div className="panel-tabs">
+        {Object.entries(cats).map(([k,c])=>(
+          <button key={k} className={`panel-tab ${panelTab===k?'active':''}`}
+            onClick={()=>setPanelTab(k)}>{c.label}</button>
+        ))}
+      </div>
+      <div className="panel-grid">
+        {cats[panelTab].items.map(key=>{
+          const def = defOf(key);
+          const cost = def.baseCost || def.cost || 0;
+          const locked = def.unlockLevel && state.level < def.unlockLevel;
+          const cant = state.msdk < cost;
+          const own = state.buildings.filter(b => b.type === key).length;
+          return (
+            <div key={key} className={`build-card ${locked?'locked':''}`}
+              onClick={()=>{ if (locked || cant) return; if (confirm(`بناء ${def.name} بسعر ${fmt(cost)} MSDK؟`)) startBuild(key); }}>
+              {own > 0 && <div className="own">×{own}</div>}
+              <div className="e">{def.emoji}</div>
+              <div className="n">{def.name}</div>
+              <div className="c">🪙 {fmt(cost)}</div>
+              {def.desc && <div className="c" style={{fontSize:9,color:'#5d4037',marginTop:2}}>{def.desc.slice(0,40)}</div>}
+              {locked && <div className="c" style={{color:'#b71c1c'}}>🔒 م{def.unlockLevel}</div>}
+              {!locked && cant && <div className="c" style={{color:'#b71c1c'}}>💸</div>}
+              <button onClick={(e)=>{e.stopPropagation(); showInfo(key);}}
+                style={{marginTop:4,padding:'2px 6px',fontSize:10,borderRadius:6,border:'1px solid #5d4037',background:'#fff',cursor:'pointer'}}>تفاصيل</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MarketPanel({listings: serverListings = [], buyFromMarket, onClose, fmt, fmtTime}){
+  const [filter, setFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('priceAsc');
+  const items = ['all', 'wheat','cucumber','carrot','corn','tomato','pepper','strawberry',
+                 'watermelon','pumpkin','grape','egg','milk','wool','meat','fur',
+                 'flour','bread','cheese','butter','cake','fabric','juice','jam','wine'];
+  const listings = serverListings.filter(l => filter==='all' || l.item===filter);
+  const marketStats = {};
+  serverListings.forEach(l => {
+    if (!marketStats[l.item]) marketStats[l.item] = { prices: [], qty: 0 };
+    marketStats[l.item].prices.push(l.price);
+    marketStats[l.item].qty += l.qty;
   });
-  html+='</div><div id="adminContent"></div></div>';
-  c.innerHTML=html;
-  loadAdminContent();
+  // الفرز
+  const sorted = [...listings].sort((a,b)=>{
+    if (sortBy === 'priceAsc')  return a.price - b.price;
+    if (sortBy === 'priceDesc') return b.price - a.price;
+    if (sortBy === 'qtyAsc')    return a.qty - b.qty;
+    if (sortBy === 'qtyDesc')   return b.qty - a.qty;
+    return 0;
+  });
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>🏛 السوق العالمي - عرض وطلب</h3>
+      <div style={{fontSize:11,color:'#fff',marginBottom:6}}>
+        💡 محاكاة سوق العرض/الطلب من لاعبين افتراضيين. للنشر الحقيقي مع لاعبين فعليين يلزم backend.
+      </div>
+
+      {/* فرز */}
+      <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:6,padding:6,background:'rgba(0,0,0,0.2)',borderRadius:8}}>
+        <span style={{fontSize:11,color:'#fff',fontWeight:900,alignSelf:'center'}}>📊 فرز:</span>
+        {[
+          {k:'priceAsc',  l:'💰 الأرخص'},
+          {k:'priceDesc', l:'💰 الأغلى'},
+          {k:'qtyDesc',   l:'📦 الأكثر كمية'},
+          {k:'qtyAsc',    l:'📦 الأقل كمية'},
+        ].map(o => (
+          <button key={o.k} onClick={()=>setSortBy(o.k)}
+            className={`panel-tab ${sortBy===o.k?'active':''}`}
+            style={{fontSize:11,padding:'3px 8px'}}>{o.l}</button>
+        ))}
+      </div>
+
+      {/* فلتر السلعة */}
+      <div className="panel-tabs" style={{marginBottom:8,maxHeight:80,overflowY:'auto'}}>
+        {items.map(k => (
+          <button key={k} className={`panel-tab ${filter===k?'active':''}`}
+            onClick={()=>setFilter(k)} style={{fontSize:11,padding:'3px 8px'}}>
+            {k==='all'?'كل':(PRODUCT_EMOJI[k]||'📦')+' '+(PRODUCTS[k]||k)}
+          </button>
+        ))}
+      </div>
+
+      {/* إحصائيات سريعة للسلعة المختارة */}
+      {filter !== 'all' && marketStats[filter] && (
+        <div style={{fontSize:11,padding:6,background:'#fff8e1',color:'#4e342e',borderRadius:8,marginBottom:6}}>
+          📈 السلعة: <b>{PRODUCTS[filter]}</b> •
+          الإجمالي: {marketStats[filter].qty} •
+          أرخص: {fmt(Math.min(...marketStats[filter].prices))} •
+          أغلى: {fmt(Math.max(...marketStats[filter].prices))} •
+          متوسط: {fmt(Math.round(marketStats[filter].prices.reduce((a,b)=>a+b,0)/marketStats[filter].prices.length))}
+        </div>
+      )}
+
+      {sorted.length === 0 && <div style={{padding:20,textAlign:'center',color:'#fff'}}>
+        ⏳ لا توجد عروض الآن - تحقّق بعد قليل
+      </div>}
+      <div style={{maxHeight:'45vh',overflowY:'auto'}}>
+      {sorted.map(l=>{
+        // حدد إذا كان السعر أعلى/أدنى من المتوسط
+        const stats = marketStats[l.item];
+        let priceTag = '';
+        if (stats && stats.prices.length > 1) {
+          const avg = stats.prices.reduce((a,b)=>a+b,0)/stats.prices.length;
+          if (l.price < avg * 0.85) priceTag = '🟢 رخيص';
+          else if (l.price > avg * 1.15) priceTag = '🔴 غالي';
+        }
+        return (
+          <div key={l.id} className="order-row">
+            <span style={{fontSize:24}}>{PRODUCT_EMOJI[l.item]||'📦'}</span>
+            <div>
+              <div style={{fontWeight:900}}>{l.qty}× {PRODUCTS[l.item]||l.item}</div>
+              <div style={{fontSize:10,color:'#666'}}>من: {l.seller_name || l.seller} {priceTag}</div>
+            </div>
+            <div style={{fontWeight:900,color:'#bf360c'}}>{fmt(l.price)} MSDK<br/>
+              <span style={{fontSize:10,color:'#666'}}>الكل: {fmt(l.price*l.qty)}</span></div>
+            <button className="menu-btn mb-up" onClick={()=>buyFromMarket(l)}
+              style={{padding:'4px 8px',fontSize:11}}>شراء</button>
+          </div>
+        );
+      })}
+      </div>
+    </div>
+  );
 }
-async function loadAdminContent(){
-  const el=document.getElementById('adminContent');if(!el)return;
-  if(S.adminTab==='stats'){
-    const r=await api('/api/admin/stats');
-    if(r.error){el.innerHTML='<div class="empty">'+r.error+'</div>';return}
-    el.innerHTML='<div class="stat-grid">'+
-      '<div class="stat-box"><div class="stat-label">إجمالي اللاعبين</div><div class="stat-value" style="color:var(--accent)">'+(r.totalPlayers||0)+'</div></div>'+
-      '<div class="stat-box"><div class="stat-label">متصلون</div><div class="stat-value" style="color:var(--green)">'+(r.onlinePlayers||0)+'</div></div>'+
-      '<div class="stat-box"><div class="stat-label">شحن معلق</div><div class="stat-value" style="color:var(--orange)">'+(r.pendingTopups||0)+'</div></div>'+
-      '<div class="stat-box"><div class="stat-label">سحب معلق</div><div class="stat-value" style="color:var(--red)">'+(r.pendingWithdrawals||0)+'</div></div></div>';
-  }
-  else if(S.adminTab==='topups'){
-    const r=await api('/api/admin/topups');
-    if(!Array.isArray(r)){el.innerHTML='<div class="empty">لا توجد طلبات</div>';return}
-    let h='';
-    r.forEach(t=>{
-      h+='<div class="item-row"><div class="item-info"><div class="item-name">'+t.username+' — '+t.amount+' MSDK</div>';
-      h+='<div class="item-desc" style="font-family:monospace;direction:ltr">TX: '+(t.txHash||'').substring(0,20)+'...</div></div>';
-      h+='<div class="item-actions">';
-      if(t.status==='pending'){
-        h+='<button class="btn btn-green btn-sm" onclick="doAdminTopup(\''+t.id+'\',true)">قبول</button>';
-        h+='<button class="btn btn-red btn-sm" onclick="doAdminTopup(\''+t.id+'\',false)">رفض</button>';
-      }else h+='<span class="status-badge status-'+t.status+'">'+(t.status==='approved'?'مقبول':'مرفوض')+'</span>';
-      h+='</div></div>';
-    });
-    el.innerHTML=h||'<div class="empty">لا توجد طلبات</div>';
-  }
-  else if(S.adminTab==='withdrawals'){
-    const r=await api('/api/admin/withdrawals');
-    if(!Array.isArray(r)){el.innerHTML='<div class="empty">لا توجد طلبات</div>';return}
-    let h='';
-    r.forEach(w=>{
-      h+='<div class="item-row"><div class="item-info"><div class="item-name">'+w.username+' — '+w.amount+' MSDK</div>';
-      h+='<div class="item-desc">'+w.currency+' → '+w.walletAddress+'</div></div>';
-      h+='<div class="item-actions">';
-      if(w.status==='pending'){
-        h+='<button class="btn btn-green btn-sm" onclick="doAdminWithdraw(\''+w.id+'\',true)">قبول</button>';
-        h+='<button class="btn btn-red btn-sm" onclick="doAdminWithdraw(\''+w.id+'\',false)">رفض</button>';
-      }else h+='<span class="status-badge status-'+w.status+'">'+(w.status==='approved'?'مقبول':'مرفوض')+'</span>';
-      h+='</div></div>';
-    });
-    el.innerHTML=h||'<div class="empty">لا توجد طلبات</div>';
-  }
-  else if(S.adminTab==='grant'){
-    el.innerHTML='<input id="grantUser" placeholder="اسم المستخدم">'+
-      '<input type="number" id="grantAmt" placeholder="المبلغ">'+
-      '<button class="btn btn-gold btn-full" onclick="doAdminGrant()">منح MSDK 💰</button>';
-  }
-  else if(S.adminTab==='players'){
-    const r=await api('/api/admin/players');
-    if(!Array.isArray(r)){el.innerHTML='<div class="empty">لا يوجد لاعبون</div>';return}
-    let h='';
-    r.forEach(p=>{
-      h+='<div class="player-row"><div class="online-dot" style="background:'+(p.online?'var(--green)':'var(--text3)')+'"></div>';
-      h+='<span style="font-size:11px;flex:1">'+p.username+(p.username==='MSDK'?' 👑':'')+'</span>';
-      h+='<span style="font-size:10px;color:var(--gold)">'+p.msdk+' M</span>';
-      h+='<span style="font-size:10px;color:var(--text3);margin-right:8px">Lv.'+p.level+'</span></div>';
-    });
-    el.innerHTML=h;
-  }
+
+function StandPanel({state, openStandSlot, onClose, fmt}){
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>🏪 كشكي - 9 صناديق لعرض البيع</h3>
+      <div style={{fontSize:11,color:'#fff',marginBottom:8}}>
+        💡 اضغط صندوقاً فارغاً لعرض سلعة. تباع للاعبين الآخرين عشوائياً. اضغط الصندوق المباع لجمع الأموال.
+      </div>
+      <div className="stand-grid">
+        {state.myStand.map((slot, i)=>(
+          <div key={i} className={`stand-slot ${slot ? (slot.status==='sold'?'sold':'has') : ''}`}
+            onClick={()=>openStandSlot(i)}>
+            {!slot && <><div className="se">➕</div><div>صندوق {i+1}</div></>}
+            {slot && slot.status === 'listed' && <>
+              <div className="se">{PRODUCT_EMOJI[slot.item]||'📦'}</div>
+              <div className="sn">{slot.qty}× {PRODUCTS[slot.item]||slot.item}</div>
+              <div className="sp">@{fmt(slot.price)} MSDK</div>
+              <div style={{fontSize:9,marginTop:2}}>(اضغط للإلغاء)</div>
+            </>}
+            {slot && slot.status === 'sold' && <>
+              <div className="se">💰</div>
+              <div className="sn">+{fmt(slot.qty*slot.price)}</div>
+              <div className="sp" style={{fontSize:10}}>بيع لـ {slot.soldTo}</div>
+              <div style={{fontSize:9,marginTop:2}}>اضغط لجمع</div>
+            </>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
-async function doAdminTopup(id,approve){
-  const url=approve?'/api/admin/topup/approve':'/api/admin/topup/reject';
-  const r=await api(url,'POST',{topupId:id});
-  if(r.error){toast(r.error,'error');return}
-  toast(approve?'تمت الموافقة!':'تم الرفض','success');loadAdminContent();
+
+function MissionsPanel({state, completeMission, onClose, fmt}){
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>📋 المهام النشطة</h3>
+      <div style={{fontSize:11,color:'#fff',marginBottom:8}}>
+        💡 سلم المنتجات المطلوبة من مخزونك. مهام جديدة كل 4 ساعات.
+      </div>
+      {state.missions.length === 0 && <div style={{padding:20,textAlign:'center',color:'#fff'}}>
+        ⏳ لا توجد مهام - تحقّق بعد قليل
+      </div>}
+      {state.missions.map(m=>{
+        const have = (state.crops[m.item]||0) + (state.products[m.item]||0);
+        const can = have >= m.qty;
+        return (
+          <div key={m.id} className="order-row" style={{gridTemplateColumns:'auto 1fr auto'}}>
+            <div style={{fontSize:32}}>{PRODUCT_EMOJI[m.item]}</div>
+            <div>
+              <div style={{fontWeight:900}}>سلّم {m.qty}× {PRODUCTS[m.item]}</div>
+              <div style={{fontSize:11,color:'#1b5e20'}}>المكافأة: {fmt(m.reward)} MSDK + {m.xp} XP</div>
+              <div style={{fontSize:10,color:'#666'}}>عندك: {have}/{m.qty}</div>
+            </div>
+            <button disabled={!can} onClick={()=>completeMission(m.id)}
+              className={can?'menu-btn mb-up':'menu-btn'} style={{padding:'6px 10px'}}>
+              {can?'تسليم ✓':'ناقص'}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
-async function doAdminWithdraw(id,approve){
-  const url=approve?'/api/admin/withdraw/approve':'/api/admin/withdraw/reject';
-  const r=await api(url,'POST',{withdrawId:id});
-  if(r.error){toast(r.error,'error');return}
-  toast(approve?'تمت الموافقة!':'تم الرفض','success');loadAdminContent();
+
+function InventoryPanel({state, totalInv, invCap, onClose, fmt}){
+  const renderGroup = (label, obj, color)=>{
+    const entries = Object.entries(obj).filter(([_,n])=>n>0);
+    if (entries.length === 0) return null;
+    return <>
+      <h4 style={{color}}>{label}</h4>
+      <div className="panel-grid">
+        {entries.map(([k,n])=>(
+          <div key={k} className="build-card">
+            <div className="own">×{n}</div>
+            <div className="e">{PRODUCT_EMOJI[k]||'📦'}</div>
+            <div className="n">{PRODUCTS[k]||k}</div>
+            <div className="c">قيمة سوقية: {fmt(baseValueOf(k))}</div>
+          </div>
+        ))}
+      </div>
+    </>;
+  };
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>🎒 المخزون - {totalInv()}/{invCap()}</h3>
+      <div style={{fontSize:11,color:'#fff',marginBottom:8}}>
+        💡 ارفع السعة بشراء صوامع 🏭. كل صومعة +50 سعة وتترقى.
+      </div>
+      <div style={{fontSize:10,color:'#aed581',marginBottom:6}}>
+        💡 المحصول هو نفسه - لزراعته أو لبيعه، نفس القمح.
+      </div>
+      {renderGroup('🌾 المحاصيل (للزراعة أو البيع)', state.crops, '#ffeb3b')}
+      {renderGroup('🏭 منتجات المصانع', state.products, '#ffa000')}
+    </div>
+  );
 }
-async function doAdminGrant(){
-  const user=document.getElementById('grantUser')?.value?.trim();
-  const amt=parseInt(document.getElementById('grantAmt')?.value);
-  if(!user||!amt){toast('أدخل اسم المستخدم والمبلغ','error');return}
-  const r=await api('/api/admin/grant','POST',{username:user,amount:amt});
-  if(r.error){toast(r.error,'error');return}
-  toast('تم منح '+amt+' MSDK لـ '+user,'success');
+
+function WalletPanel({state, user, depositMSDK, withdrawMSDK, onClose, fmt, showToast, refreshState}){
+  const [tab, setTab] = useState('crypto'); // crypto | msdk | withdraw | history
+  const [wdAmt, setWdAmt] = useState('');
+  const [wdAddr, setWdAddr] = useState('');
+
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>💼 محفظة MSDK</h3>
+      <div style={{background:'linear-gradient(135deg,#ffd54f,#ff8f00)',padding:14,borderRadius:14,textAlign:'center',marginBottom:10,color:'#4e342e'}}>
+        <div style={{fontSize:13}}>الرصيد الحالي</div>
+        <div style={{fontSize:32,fontWeight:900}}>🪙 {fmt(state.msdk)}</div>
+        <div style={{fontSize:11,marginTop:4}}>1 MSDK داخل اللعبة = 1 MSDK خارج اللعبة</div>
+      </div>
+
+      <div className="panel-tabs" style={{marginBottom:10}}>
+        <button className={`panel-tab ${tab==='crypto'?'active':''}`} onClick={()=>setTab('crypto')}>🪙 شحن كريبتو</button>
+        <button className={`panel-tab ${tab==='withdraw'?'active':''}`} onClick={()=>setTab('withdraw')}>📤 سحب</button>
+        <button className={`panel-tab ${tab==='history'?'active':''}`} onClick={()=>setTab('history')}>📜 السجل</button>
+      </div>
+
+      {tab === 'crypto' && <CryptoDepositForm user={user} fmt={fmt} showToast={showToast} refreshState={refreshState} />}
+
+      {tab === 'withdraw' && (
+        <div>
+          <h4 style={{color:'#ffab91',marginTop:0}}>📤 سحب MSDK إلى محفظة خارجية</h4>
+          <input className="input" value={wdAddr} onChange={(e)=>setWdAddr(e.target.value)}
+            placeholder="عنوان محفظتك Tron/BSC" style={{marginBottom:6}} />
+          <div style={{display:'flex',gap:6,marginBottom:8}}>
+            <input className="input" type="number" value={wdAmt} onChange={(e)=>setWdAmt(e.target.value)}
+              placeholder="مبلغ MSDK للسحب" />
+            <button className="menu-btn mb-rm" onClick={()=>{withdrawMSDK(wdAmt, wdAddr); setWdAmt('');}}>
+              سحب
+            </button>
+          </div>
+          <div style={{padding:8,background:'#fff3e0',borderRadius:8,fontSize:11,color:'#bf360c'}}>
+            ⚠️ السحوبات تتم يدوياً من الأدمن خلال 24 ساعة. للسحب التلقائي يلزم ربط محفظة الأدمن بـ API.
+          </div>
+        </div>
+      )}
+
+      {tab === 'history' && <>
+      <h4 style={{color:'#ce93d8',marginTop:0}}>📜 سجل المعاملات</h4>
+      <div style={{maxHeight:'40vh',overflowY:'auto'}}>
+      {(state.walletHistory||[]).length === 0 && <div style={{color:'#fff',padding:8}}>لا توجد معاملات بعد</div>}
+      {(state.walletHistory||[]).map(h=>(
+        <div key={h.id} style={{background:'#fff',color:'#3e2723',padding:6,borderRadius:8,marginBottom:4,fontSize:12}}>
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <strong>{h.type}</strong>
+            <span style={{color: h.amount>=0?'#1b5e20':'#b71c1c',fontWeight:900}}>
+              {h.amount>=0?'+':''}{fmt(h.amount)}
+            </span>
+          </div>
+          <div style={{fontSize:10,color:'#666'}}>{h.note}</div>
+          <div style={{fontSize:9,color:'#999'}}>{new Date(h.time).toLocaleString('ar-SA')}</div>
+        </div>
+      ))}
+      </div>
+      </>}
+    </div>
+  );
 }
+
+/* ====== مكوّن إيداع الكريبتو ====== */
+function CryptoDepositForm({user, fmt, showToast, refreshState}){
+  const [info, setInfo] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [selected, setSelected] = useState('tron-usdt');
+  const [txHash, setTxHash] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copyOk, setCopyOk] = useState(false);
+
+  useEffect(()=>{
+    API.req('GET','/wallet/deposit-info').then(setInfo).catch(()=>{});
+    API.req('GET','/wallet/crypto-history').then(r => setHistory(r.deposits||[])).catch(()=>{});
+  }, []);
+
+  const verify = async ()=>{
+    if (!txHash.trim()) { showToast('❌ أدخل tx hash'); return; }
+    setBusy(true);
+    try {
+      const r = await API.req('POST','/wallet/crypto-deposit', { network: selected, txHash: txHash.trim() });
+      showToast(`✅ ${r.amount} ${r.currency} → ${fmt(r.msdkAmount)} MSDK`);
+      setTxHash('');
+      refreshState();
+      const h = await API.req('GET','/wallet/crypto-history');
+      setHistory(h.deposits||[]);
+    } catch(e) {
+      showToast('❌ '+e.message);
+    }
+    setBusy(false);
+  };
+
+  const copy = (text)=>{
+    navigator.clipboard?.writeText(text);
+    setCopyOk(true); setTimeout(()=>setCopyOk(false), 1500);
+  };
+
+  if (!info) return <div style={{color:'#fff',padding:10}}>...جاري التحميل</div>;
+  const net = info.networks.find(n => n.id === selected) || info.networks[0];
+
+  return (
+    <div>
+      <h4 style={{color:'#90caf9',marginTop:0}}>🪙 شحن MSDK بالعملات الرقمية</h4>
+
+      <div style={{padding:8,background:'rgba(76,175,80,0.2)',borderRadius:8,fontSize:11,marginBottom:8,color:'#fff'}}>
+        💱 <b>الأسعار:</b> 1 USDT = {fmt(info.rates.USDT)} MSDK • 1 TRX = {fmt(info.rates.TRX)} MSDK • 1 BNB = {fmt(info.rates.BNB)} MSDK
+      </div>
+
+      <label style={{fontSize:12,color:'#fff'}}>اختر الشبكة:</label>
+      <select value={selected} onChange={(e)=>setSelected(e.target.value)}
+        style={{width:'100%',padding:8,marginBottom:8,borderRadius:8,border:'2px solid #d7ccc8',background:'#fff',color:'#3e2723',fontWeight:900}}>
+        {info.networks.map(n => (
+          <option key={n.id} value={n.id}>{n.label} - رسوم: {n.fee}</option>
+        ))}
+      </select>
+
+      {net.addr ? (
+        <div style={{background:'#fff',padding:10,borderRadius:8,color:'#3e2723',marginBottom:8}}>
+          <div style={{fontSize:11,marginBottom:4,fontWeight:900}}>📋 عنوان الإيداع ({net.currency}):</div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <code style={{fontSize:11,wordBreak:'break-all',flex:1,background:'#f5f5f5',padding:4,borderRadius:4}}>{net.addr}</code>
+            <button onClick={()=>copy(net.addr)}
+              style={{padding:'4px 10px',borderRadius:6,border:'1px solid #5d4037',background:copyOk?'#4caf50':'#fff',color:copyOk?'#fff':'#3e2723',cursor:'pointer',fontWeight:900,fontSize:11}}>
+              {copyOk?'✓':'📋'}
+            </button>
+          </div>
+          <img alt="QR" style={{display:'block',margin:'8px auto',width:160,height:160,background:'#fff',padding:4,border:'1px solid #d7ccc8'}}
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(net.addr)}`} />
+        </div>
+      ) : (
+        <div style={{padding:10,background:'#fff3e0',borderRadius:8,color:'#bf360c',fontSize:12,marginBottom:8}}>
+          ⚠️ عنوان {net.currency} غير مكوّن. اطلب من الأدمن إضافة <code>DEPOSIT_TRX_ADDRESS</code> أو <code>DEPOSIT_BSC_ADDRESS</code> في إعدادات Railway.
+        </div>
+      )}
+
+      <div style={{fontSize:11,marginBottom:6,color:'#ffeb3b',padding:6,background:'rgba(0,0,0,0.3)',borderRadius:6}}>
+        <b>📝 الخطوات:</b><br/>
+        1️⃣ أرسل {net.currency} من محفظتك (TronLink/Trust Wallet/Binance) إلى العنوان أعلاه<br/>
+        2️⃣ انتظر تأكيد المعاملة على البلوكشين (~30 ثانية)<br/>
+        3️⃣ انسخ <b>Transaction Hash</b> من محفظتك<br/>
+        4️⃣ الصقه هنا واضغط تحقق - سيُضاف MSDK تلقائياً
+      </div>
+
+      <label style={{fontSize:12,color:'#fff'}}>Transaction Hash (TxID):</label>
+      <input className="input" value={txHash} onChange={(e)=>setTxHash(e.target.value)}
+        placeholder="مثال: 0xabc123... أو abc123..." disabled={!net.addr}
+        style={{marginBottom:6}} />
+      <button onClick={verify} disabled={busy || !net.addr}
+        className="menu-btn mb-up" style={{width:'100%',padding:10,fontSize:13}}>
+        {busy ? '⏳ جاري التحقق من البلوكشين...' : `✅ تحقق وأضف MSDK`}
+      </button>
+
+      <h4 style={{color:'#ce93d8',marginTop:14}}>📜 تاريخ إيداعاتك الكريبتو</h4>
+      <div style={{maxHeight:'25vh',overflowY:'auto'}}>
+      {history.length === 0 && <div style={{color:'#fff',padding:8,fontSize:11}}>لا توجد إيداعات بعد</div>}
+      {history.map(h => (
+        <div key={h.id} style={{background:'#fff',color:'#3e2723',padding:6,borderRadius:6,marginBottom:3,fontSize:11}}>
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <strong>{h.amount_crypto} {h.currency}</strong>
+            <span style={{color:'#1b5e20',fontWeight:900}}>+{fmt(h.amount_msdk)} MSDK</span>
+          </div>
+          <div style={{fontSize:9,color:'#666',wordBreak:'break-all'}}>tx: {h.tx_hash}</div>
+          <div style={{fontSize:9,color:'#999'}}>{new Date(h.created_at).toLocaleString('ar-SA')}</div>
+        </div>
+      ))}
+      </div>
+    </div>
+  );
+}
+
+function ChatPanel({chatMessages = [], user, chatInput, setChatInput, sendChat, onClose}){
+  return (
+    <div className="panel">
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>💬 الدردشة العالمية - مباشرة بين اللاعبين</h3>
+      <div style={{fontSize:10,color:'#aed581',marginBottom:6}}>
+        ✅ متصل بالخادم - رسائل حقيقية من لاعبين متصلين الآن
+      </div>
+      <div style={{maxHeight:'45vh',overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      {chatMessages.length === 0 && <div style={{color:'#fff',padding:10,textAlign:'center'}}>لا رسائل بعد - كن أول من يبدأ! 👋</div>}
+      {chatMessages.map(m=>(
+        <div key={m.id} className={`chat-msg ${m.me?'me':''}`}>
+          <span className="u">{m.user_name || m.user}:</span> {m.text}
+        </div>
+      ))}
+      </div>
+      <div style={{display:'flex',gap:6,marginTop:8}}>
+        <input className="input" value={chatInput} onChange={(e)=>setChatInput(e.target.value)}
+          placeholder="اكتب رسالة..." onKeyDown={(e)=>{if (e.key==='Enter') sendChat();}}/>
+        <button className="menu-btn mb-up" onClick={sendChat}>إرسال</button>
+      </div>
+    </div>
+  );
+}
+
+function AdminPanel({state, setState, onClose, fmt}){
+  const [stats, setStats] = useState(null);
+  const [players, setPlayers] = useState([]);
+  const [log, setLog] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [tab, setTab] = useState('stats');
+
+  const refresh = useCallback(()=>{
+    API.adminStats().then(r => setStats(r)).catch(()=>{});
+    API.adminPlayers().then(r => setPlayers(r.players||[])).catch(()=>{});
+    API.adminLog().then(r => setLog(r.log||[])).catch(()=>{});
+    API.adminTransactions().then(r => setTransactions(r.transactions||[])).catch(()=>{});
+  }, []);
+  useEffect(()=>{ refresh(); const t = setInterval(refresh, 10_000); return ()=>clearInterval(t); }, []);
+
+  const adjust = async (uid, name) => {
+    const amt = prompt(`تعديل رصيد ${name} (موجب=إيداع، سالب=خصم):`);
+    if (!amt) return;
+    const reason = prompt('السبب:') || 'تعديل أدمن';
+    try {
+      await API.adminAdjust(uid, parseInt(amt,10), reason);
+      refresh();
+    } catch(e) { alert('خطأ: '+e.message); }
+  };
+
+  return (
+    <div className="panel" style={{background:'linear-gradient(180deg,#4a148c,#1a0033)'}}>
+      <button className="close-x" onClick={onClose}>✖</button>
+      <h3>👑 لوحة الأدمن - بيانات حقيقية من الخادم</h3>
+
+      <div className="panel-tabs" style={{marginBottom:8}}>
+        {[
+          {k:'stats', l:'📊 إحصائيات'},
+          {k:'players', l:'👥 اللاعبون'},
+          {k:'tx', l:'💸 المعاملات'},
+          {k:'log', l:'📜 السجل'},
+        ].map(t => (
+          <button key={t.k} className={`panel-tab ${tab===t.k?'active':''}`}
+            onClick={()=>setTab(t.k)}>{t.l}</button>
+        ))}
+      </div>
+
+      {tab==='stats' && stats && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          <div className="build-card"><div className="e">👥</div>
+            <div className="n">إجمالي اللاعبين</div>
+            <div className="c" style={{fontSize:20,fontWeight:900}}>{stats.totalPlayers}</div></div>
+          <div className="build-card"><div className="e">🟢</div>
+            <div className="n">متصلون الآن (5د)</div>
+            <div className="c" style={{fontSize:20,fontWeight:900,color:'#2e7d32'}}>{stats.onlinePlayers}</div></div>
+          <div className="build-card"><div className="e">🪙</div>
+            <div className="n">إجمالي MSDK</div>
+            <div className="c" style={{fontSize:14,fontWeight:900}}>{fmt(stats.totalMSDK)}</div></div>
+          <div className="build-card"><div className="e">📦</div>
+            <div className="n">عروض السوق</div>
+            <div className="c" style={{fontSize:18,fontWeight:900}}>{stats.activeListings}</div></div>
+          <div className="build-card"><div className="e">📥</div>
+            <div className="n">إيداعات (24س)</div>
+            <div className="c" style={{fontSize:14,fontWeight:900,color:'#1b5e20'}}>+{fmt(stats.recentDeposits)}</div></div>
+          <div className="build-card"><div className="e">📤</div>
+            <div className="n">سحوبات (24س)</div>
+            <div className="c" style={{fontSize:14,fontWeight:900,color:'#b71c1c'}}>-{fmt(stats.recentWithdrawals)}</div></div>
+        </div>
+      )}
+
+      {tab==='players' && (
+        <div style={{maxHeight:'50vh',overflowY:'auto'}}>
+        {players.map(p => {
+          const online = (Date.now() - p.last_seen) < 5*60*1000;
+          return (
+            <div key={p.id} className="order-row" style={{gridTemplateColumns:'auto 1fr auto auto'}}>
+              <div style={{fontSize:24}}>{p.type==='admin'?'👑':'👤'}</div>
+              <div>
+                <div style={{fontWeight:900}}>{p.name} {online && '🟢'}</div>
+                <div style={{fontSize:10}}>م.{p.level} • XP {p.xp} • منذ {new Date(p.created_at).toLocaleDateString('ar-SA')}</div>
+              </div>
+              <div style={{fontWeight:900,color:'#bf360c'}}>{fmt(p.msdk)} 🪙</div>
+              <button onClick={()=>adjust(p.id, p.name)} className="menu-btn mb-cl" style={{padding:'3px 6px',fontSize:10}}>تعديل</button>
+            </div>
+          );
+        })}
+        </div>
+      )}
+
+      {tab==='tx' && (
+        <div style={{maxHeight:'50vh',overflowY:'auto'}}>
+        {transactions.map(t => (
+          <div key={t.id} style={{background:'rgba(255,255,255,0.1)',color:'#fff',padding:6,borderRadius:6,marginBottom:3,fontSize:11}}>
+            <div style={{display:'flex',justifyContent:'space-between'}}>
+              <strong>{t.user_name||'?'}</strong>
+              <span style={{color: t.amount>=0?'#a5d6a7':'#ef9a9a',fontWeight:900}}>{t.amount>=0?'+':''}{fmt(t.amount)}</span>
+            </div>
+            <div style={{fontSize:10,opacity:0.8}}>{t.type} {t.item?'· '+t.qty+'× '+t.item:''} {t.note?'· '+t.note:''}</div>
+            <div style={{fontSize:9,opacity:0.6}}>{new Date(t.time).toLocaleString('ar-SA')}</div>
+          </div>
+        ))}
+        </div>
+      )}
+
+      {tab==='log' && (
+        <div style={{maxHeight:'50vh',overflowY:'auto'}}>
+        {log.map(l => (
+          <div key={l.id} style={{background:'rgba(255,255,255,0.1)',color:'#fff',padding:6,borderRadius:6,marginBottom:3,fontSize:11}}>
+            <strong>{l.user_name||'?'}</strong>: {l.action} {l.details?'· '+l.details:''}
+            <div style={{fontSize:9,opacity:0.7}}>{new Date(l.time).toLocaleString('ar-SA')}</div>
+          </div>
+        ))}
+        </div>
+      )}
+
+      <div style={{marginTop:10,padding:6,background:'rgba(0,0,0,0.3)',borderRadius:6,fontSize:11,color:'#fff'}}>
+        ⚡ سرعة الوقت (محلي):
+        <input type="number" step="0.01" min="0.01" max="100" value={state.timeMul}
+          onChange={(e)=>setState(s=>({...s, timeMul: parseFloat(e.target.value)||1}))}
+          style={{width:60,padding:2,fontSize:11,marginRight:6}}/>
+        (0.01 = أسرع 100×)
+      </div>
+    </div>
+  );
+}
+
+function FactoryModal({building, state, startRecipe, collectRecipe, onClose, fmt, fmtTime, tMul}){
+  if (!building) return null;
+  const f = FACTORIES[building.type]; if (!f) return null;
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-box" onClick={(e)=>e.stopPropagation()}>
+        <button className="close-x" onClick={onClose}>✖</button>
+        <h3 style={{color:'#bf360c',margin:'0 0 8px'}}>{f.emoji} {f.name}</h3>
+        <div style={{fontSize:12,marginBottom:10}}>{f.desc}</div>
+
+        <h4>🍽 طابور الإنتاج ({(building.queue||[]).length}/{building.queueCap||3})</h4>
+        {(building.queue||[]).length === 0 && <div style={{padding:8,background:'#fff',borderRadius:8,fontSize:12,color:'#666',marginBottom:8}}>
+          الطابور فارغ - ابدأ وصفة من الأسفل
+        </div>}
+        {(building.queue||[]).map((q,i)=>{
+          const r = f.recipes.find(rc => rc.id === q.recipeId);
+          if (!r) return null;
+          const elapsed = (Date.now() - q.startedAt)/1000;
+          const total = r.time * tMul;
+          const ready = elapsed >= total;
+          return (
+            <div key={i} className="order-row" style={{gridTemplateColumns:'auto 1fr auto'}}>
+              <div style={{fontSize:24}}>{PRODUCT_EMOJI[Object.keys(r.out)[0]]}</div>
+              <div>
+                <div style={{fontWeight:900}}>{Object.entries(r.out).map(([k,n])=>`${n}× ${PRODUCTS[k]||k}`).join(', ')}</div>
+                <div style={{fontSize:11,color:'#666'}}>{ready ? '✅ جاهز' : '⏳ '+fmtTime(total - elapsed)}</div>
+              </div>
+              <button disabled={!ready} className={ready?'menu-btn mb-up':'menu-btn'}
+                onClick={()=>collectRecipe(building.id, i)} style={{padding:'4px 8px'}}>جمع</button>
+            </div>
+          );
+        })}
+
+        <h4 style={{marginTop:10}}>📑 الوصفات المتاحة</h4>
+        {f.recipes.map(r=>{
+          const have = {...state.crops, ...state.products};
+          const ok = Object.entries(r.in).every(([k,n]) => (have[k]||0) >= n);
+          return (
+            <div key={r.id} className="seed-row">
+              <div style={{fontSize:30}}>{PRODUCT_EMOJI[Object.keys(r.out)[0]]}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:900}}>{Object.entries(r.out).map(([k,n])=>`${n}× ${PRODUCTS[k]||k}`).join(', ')}</div>
+                <div style={{fontSize:11}}>
+                  المدخلات: {Object.entries(r.in).map(([k,n])=>{
+                    const has = have[k]||0;
+                    return <span key={k} className={has>=n?'pill pill-have':'pill pill-cost'}>{n}× {PRODUCTS[k]||k} ({has})</span>;
+                  })}
+                </div>
+                <div style={{fontSize:10,color:'#666'}}>⏱ {fmtTime(r.time)} • +{r.xp} XP • قيمة: {fmt(r.value)}</div>
+              </div>
+              <button disabled={!ok} onClick={()=>startRecipe(building.id, r.id)}
+                className={ok?'menu-btn mb-up':'menu-btn'}>بدء</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PenModal({building, state, buyAnimal, sellAnimal, collectFromAnimal, onClose, fmt, fmtTime, tMul}){
+  if (!building) return null;
+  const def = PEN_TYPES[building.type]; if (!def) return null;
+  const a = ANIMALS[def.animal];
+  const cap = def.baseCap + (building.level-1) * def.capPerLevel;
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-box" onClick={(e)=>e.stopPropagation()}>
+        <button className="close-x" onClick={onClose}>✖</button>
+        <h3 style={{color:'#bf360c',margin:'0 0 8px'}}>{def.emoji} {def.name} (م{building.level})</h3>
+        <div style={{fontSize:12,marginBottom:10}}>{def.desc}</div>
+        <div style={{fontSize:13,marginBottom:10}}>السعة: {(building.animals||[]).length}/{cap}</div>
+
+        <button disabled={(building.animals||[]).length >= cap || state.msdk < a.cost}
+          className="menu-btn mb-up" style={{width:'100%',padding:10}}
+          onClick={()=>buyAnimal(building.id)}>
+          🛒 شراء {a.name} - {fmt(a.cost)} MSDK
+        </button>
+
+        <h4 style={{marginTop:10}}>🐾 الحيوانات</h4>
+        {(building.animals||[]).length === 0 && <div style={{padding:8,background:'#fff',borderRadius:8,fontSize:12,color:'#666'}}>
+          لا حيوانات - اشتر واحداً من الأعلى
+        </div>}
+        {(building.animals||[]).map(an=>{
+          const elapsed = (Date.now() - an.lastCollect)/1000;
+          const total = a.cycle * tMul;
+          const ready = elapsed >= total;
+          return (
+            <div key={an.id} className="order-row" style={{gridTemplateColumns:'auto 1fr auto auto'}}>
+              <div style={{fontSize:30}}>{a.emoji}</div>
+              <div>
+                <div style={{fontWeight:900}}>{a.name}</div>
+                <div style={{fontSize:11,color:'#666'}}>
+                  ينتج {a.produce} {a.pEmoji} كل {fmtTime(a.cycle)}
+                </div>
+                <div style={{fontSize:11,color:ready?'#1b5e20':'#0d47a1'}}>
+                  {ready ? '✅ جاهز للجمع' : '⏳ '+fmtTime(total - elapsed)}
+                </div>
+              </div>
+              <button disabled={!ready} onClick={(e)=>collectFromAnimal(building.id, an.id, e)}
+                className={ready?'menu-btn mb-up':'menu-btn'} style={{padding:'4px 6px',fontSize:11}}>جمع</button>
+              <button onClick={()=>{ if (confirm(`بيع ${a.name}؟`)) sellAnimal(building.id, an.id); }}
+                className="menu-btn mb-rm" style={{padding:'4px 6px',fontSize:11}}>بيع</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ListItemModal({idx, state, onList, onClose, fmt}){
+  const all = {...state.crops, ...state.products};
+  const items = Object.entries(all).filter(([_,n])=>n>0);
+  const [selected, setSelected] = useState(items[0]?.[0] || null);
+  const [qty, setQty] = useState(1);
+  const [price, setPrice] = useState(0);
+  useEffect(()=>{ if (selected) setPrice(baseValueOf(selected)); }, [selected]);
+  const maxQty = selected ? all[selected]||0 : 0;
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-box" onClick={(e)=>e.stopPropagation()}>
+        <button className="close-x" onClick={onClose}>✖</button>
+        <h3 style={{color:'#bf360c',margin:'0 0 10px'}}>📌 عرض في صندوق #{idx+1}</h3>
+        {items.length === 0 && <div style={{padding:14,background:'#fff3e0',borderRadius:10,textAlign:'center'}}>
+          📭 لا يوجد لديك ما تبيعه - احصد أو اصنع أولاً
+        </div>}
+        {items.length > 0 && <>
+          <h4>1. اختر السلعة</h4>
+          <div className="panel-grid">
+            {items.map(([k,n])=>(
+              <div key={k} className={`build-card ${selected===k?'':''}`}
+                onClick={()=>setSelected(k)}
+                style={{borderColor: selected===k?'#ff8f00':'#5d4037', borderWidth:3}}>
+                <div className="own">×{n}</div>
+                <div className="e">{PRODUCT_EMOJI[k]||'📦'}</div>
+                <div className="n">{PRODUCTS[k]||k}</div>
+                <div className="c">قيمة: {fmt(baseValueOf(k))}</div>
+              </div>
+            ))}
+          </div>
+          {selected && <>
+            <h4>2. الكمية والسعر</h4>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              <label style={{fontSize:12}}>الكمية (max {maxQty}):
+                <input className="input" type="number" min="1" max={maxQty} value={qty}
+                  onChange={(e)=>setQty(Math.max(1, Math.min(maxQty, parseInt(e.target.value)||1)))}/>
+              </label>
+              <label style={{fontSize:12}}>سعر/قطعة (MSDK):
+                <input className="input" type="number" min="1" value={price}
+                  onChange={(e)=>setPrice(Math.max(1, parseInt(e.target.value)||1))}/>
+              </label>
+            </div>
+            <div style={{padding:8,background:'#fff8e1',borderRadius:8,marginTop:8,fontSize:12}}>
+              💡 السعر السوقي: {fmt(baseValueOf(selected))} MSDK<br/>
+              📊 إجمالي الصفقة: {fmt(qty * price)} MSDK<br/>
+              ⚠️ السعر الأعلى = احتمال بيع أقل
+            </div>
+            <button className="menu-btn mb-up" style={{width:'100%',marginTop:10,padding:10}}
+              onClick={()=>onList(selected, qty, price)}>📌 عرض للبيع</button>
+          </>}
+        </>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
