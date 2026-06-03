@@ -1,0 +1,14 @@
+# إعدادات Nixpacks لـ Railway
+# better-sqlite3 يحتاج أدوات بناء native
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "python311", "gcc", "gnumake"]
+
+[phases.install]
+cmds = ["npm install --omit=dev --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["echo 'Build complete'"]
+
+[start]
+cmd = "node server.js"

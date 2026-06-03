@@ -1,1096 +1,746 @@
-const http = require('http');
-const fs = require('fs');
+/**
+ * MSDK Farm - Full-Stack Backend
+ * Express + Socket.IO + SQLite
+ */
 const path = require('path');
-const crypto = require('crypto');
-const url = require('url');
-const querystring = require('querystring');
+const fs = require('fs');
+const http = require('http');
+const express = require('express');
+const compression = require('compression');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { Server } = require('socket.io');
+const { Database: _SQLiteDB } = require('node-sqlite3-wasm');
+// Compatibility wrapper: accept variadic args like better-sqlite3
+function wrapStmt(stmt) {
+  const normalize = (args) => args.length === 1 && (Array.isArray(args[0]) || (args[0] !== null && typeof args[0] === 'object')) ? args[0] : args;
+  const origRun = stmt.run.bind(stmt);
+  const origGet = stmt.get.bind(stmt);
+  const origAll = stmt.all.bind(stmt);
+  stmt.run = (...a) => origRun(normalize(a));
+  stmt.get = (...a) => origGet(normalize(a));
+  stmt.all = (...a) => origAll(normalize(a));
+  return stmt;
+}
+class Database extends _SQLiteDB {
+  prepare(sql) { return wrapStmt(super.prepare(sql)); }
+}
 
-// ======================== CONFIG ========================
+// تحميل ملف .env إن وجد
+try { require('dotenv').config?.(); } catch(e) {}
+
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'data', 'gamedata.json');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production-' + Math.random().toString(36).slice(2);
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-const ADMIN_USERNAME = 'MSDK';
-const ADMIN_PASSWORD_HASH = crypto.createHash('sha256').update('Mohanad1!').digest('hex');
+// ======================== قاعدة البيانات ========================
+// على Railway: استخدم volume mount path إن وُجد، وإلا في الجذر
+const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DB_DIR || __dirname;
+if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+const DB_PATH = path.join(DB_DIR, 'msdk.db');
+console.log('📊 قاعدة البيانات على:', DB_PATH);
+const db = new Database(DB_PATH);
+db.exec('PRAGMA journal_mode = WAL');
 
-// Game Constants
-const CROPS = [
-  { id: 'onion', name: 'بصل', growTime: 6 * 3600 * 1000, cost: 8, baseValue: 18, xp: 5 },
-  { id: 'tomato', name: 'طماطم', growTime: 8 * 3600 * 1000, cost: 20, baseValue: 35, xp: 8 },
-  { id: 'corn', name: 'ذرة', growTime: 12 * 3600 * 1000, cost: 15, baseValue: 30, xp: 10 },
-  { id: 'potato', name: 'بطاطس', growTime: 16 * 3600 * 1000, cost: 12, baseValue: 25, xp: 7 },
-  { id: 'wheat', name: 'قمح', growTime: 24 * 3600 * 1000, cost: 10, baseValue: 22, xp: 12 },
-  { id: 'cotton', name: 'قطن', growTime: 48 * 3600 * 1000, cost: 30, baseValue: 80, xp: 25 },
-  { id: 'olive', name: 'زيتون', growTime: 120 * 3600 * 1000, cost: 40, baseValue: 150, xp: 50 },
-  { id: 'grape', name: 'عنب', growTime: 168 * 3600 * 1000, cost: 50, baseValue: 200, xp: 75 },
-];
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    type TEXT DEFAULT 'player',
+    created_at INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    msdk INTEGER DEFAULT 800,
+    xp INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1
+  );
+  CREATE TABLE IF NOT EXISTS game_state (
+    user_id INTEGER PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS market_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seller_id INTEGER NOT NULL,
+    seller_name TEXT NOT NULL,
+    item TEXT NOT NULL,
+    qty INTEGER NOT NULL,
+    price INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    status TEXT DEFAULT 'active',
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_market_status ON market_listings(status);
+  CREATE INDEX IF NOT EXISTS idx_market_item ON market_listings(item);
 
-const ANIMALS = [
-  { id: 'chicken', name: 'دجاج', cost: 200, prodTime: 4 * 3600 * 1000, product: 'بيض', prodValue: 15, xp: 8, unlockLevel: 5, penId: 'chicken_pen' },
-  { id: 'sheep', name: 'خروف', cost: 800, prodTime: 12 * 3600 * 1000, product: 'صوف', prodValue: 50, xp: 20, unlockLevel: 10, penId: 'sheep_pen' },
-  { id: 'goat', name: 'ماعز', cost: 1000, prodTime: 8 * 3600 * 1000, product: 'حليب_ماعز', prodValue: 40, xp: 15, unlockLevel: 15, penId: 'goat_pen' },
-  { id: 'cow', name: 'بقرة', cost: 3000, prodTime: 6 * 3600 * 1000, product: 'حليب', prodValue: 60, xp: 25, unlockLevel: 20, penId: 'cow_pen' },
-  { id: 'bee', name: 'نحل', cost: 1500, prodTime: 24 * 3600 * 1000, product: 'عسل', prodValue: 100, xp: 40, unlockLevel: 25, penId: 'bee_pen' },
-  { id: 'horse', name: 'حصان', cost: 8000, prodTime: 48 * 3600 * 1000, product: 'أرباح_سباق', prodValue: 250, xp: 80, unlockLevel: 30, penId: 'horse_pen' },
-];
+  CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    item TEXT,
+    qty INTEGER,
+    note TEXT,
+    counterparty TEXT,
+    time INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id);
 
-const PENS = [
-  { id: 'chicken_pen', name: 'قن دجاج', cost: 500, capacity: 4, unlockLevel: 5, animalId: 'chicken', upgradeCost: 400 },
-  { id: 'sheep_pen', name: 'حظيرة أغنام', cost: 1500, capacity: 3, unlockLevel: 10, animalId: 'sheep', upgradeCost: 1200 },
-  { id: 'goat_pen', name: 'حظيرة ماعز', cost: 2000, capacity: 3, unlockLevel: 15, animalId: 'goat', upgradeCost: 1500 },
-  { id: 'cow_pen', name: 'حظيرة أبقار', cost: 5000, capacity: 2, unlockLevel: 20, animalId: 'cow', upgradeCost: 4000 },
-  { id: 'bee_pen', name: 'خلية نحل', cost: 3000, capacity: 5, unlockLevel: 25, animalId: 'bee', upgradeCost: 2500 },
-  { id: 'horse_pen', name: 'إسطبل', cost: 10000, capacity: 2, unlockLevel: 30, animalId: 'horse', upgradeCost: 8000 },
-];
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    user_name TEXT NOT NULL,
+    text TEXT NOT NULL,
+    time INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 
-const FACTORIES = [
-  { id: 'mill', name: 'طاحونة', desc: 'تحويل القمح إلى طحين', cost: 2000, unlockLevel: 5, input: 'wheat', inputQty: 5, output: 'طحين', outputQty: 3, outputValue: 50, prodTime: 2 * 3600 * 1000, xp: 15 },
-  { id: 'bakery', name: 'مخبز', desc: 'تحويل الطحين إلى خبز', cost: 3500, unlockLevel: 8, input: 'طحين', inputQty: 3, output: 'خبز', outputQty: 5, outputValue: 30, prodTime: 1.5 * 3600 * 1000, xp: 12 },
-  { id: 'cannery', name: 'مصنع معلبات', desc: 'تعليب الطماطم والذرة', cost: 5000, unlockLevel: 10, input: 'tomato', inputQty: 8, output: 'معلبات', outputQty: 4, outputValue: 80, prodTime: 3 * 3600 * 1000, xp: 20 },
-  { id: 'cheese', name: 'مصنع جبن', desc: 'تحويل الحليب إلى جبن', cost: 6000, unlockLevel: 12, input: 'حليب', inputQty: 6, output: 'جبن', outputQty: 3, outputValue: 120, prodTime: 4 * 3600 * 1000, xp: 25 },
-  { id: 'jam', name: 'مصنع مربى', desc: 'صنع مربى من العنب', cost: 8000, unlockLevel: 15, input: 'grape', inputQty: 10, output: 'مربى', outputQty: 5, outputValue: 100, prodTime: 3 * 3600 * 1000, xp: 30 },
-  { id: 'oil', name: 'مصنع زيت', desc: 'عصر الزيتون لإنتاج زيت', cost: 12000, unlockLevel: 18, input: 'olive', inputQty: 12, output: 'زيت_زيتون', outputQty: 4, outputValue: 200, prodTime: 5 * 3600 * 1000, xp: 40 },
-  { id: 'winery', name: 'مصنع عصير', desc: 'تخمير العنب لإنتاج عصير فاخر', cost: 15000, unlockLevel: 20, input: 'grape', inputQty: 15, output: 'عصير_فاخر', outputQty: 3, outputValue: 350, prodTime: 8 * 3600 * 1000, xp: 50 },
-  { id: 'textile', name: 'مصنع نسيج', desc: 'تحويل القطن إلى أقمشة', cost: 18000, unlockLevel: 22, input: 'cotton', inputQty: 10, output: 'قماش', outputQty: 4, outputValue: 280, prodTime: 6 * 3600 * 1000, xp: 45 },
-];
+  CREATE TABLE IF NOT EXISTS admin_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    user_name TEXT,
+    action TEXT NOT NULL,
+    details TEXT,
+    time INTEGER NOT NULL
+  );
 
-const PREMIUM = [
-  { id: 'auto_water', name: 'ري تلقائي', desc: 'يروي محاصيلك تلقائياً', cost: 500, emoji: '💧' },
-  { id: 'auto_harvest', name: 'حصاد تلقائي', desc: 'يحصد محاصيلك الجاهزة تلقائياً', cost: 1000, emoji: '🌾' },
-  { id: 'auto_plant', name: 'زراعة تلقائية', desc: 'يزرع تلقائياً بعد الحصاد', cost: 1500, emoji: '🌱' },
-  { id: 'auto_collect', name: 'جمع تلقائي', desc: 'يجمع إنتاج الحيوانات تلقائياً', cost: 800, emoji: '📦' },
-  { id: 'double_xp', name: 'XP مضاعف', desc: 'تحصل على ضعف XP لمدة 24 ساعة', cost: 300, emoji: '⭐', duration: 86400 * 1000 },
-];
+  CREATE TABLE IF NOT EXISTS crypto_deposits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    network TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    tx_hash TEXT UNIQUE NOT NULL,
+    from_address TEXT,
+    amount_crypto REAL NOT NULL,
+    amount_msdk INTEGER NOT NULL,
+    status TEXT DEFAULT 'confirmed',
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_deposits_user ON crypto_deposits(user_id);
+`);
 
-const INVENTORY_LEVELS = { 1: 50, 2: 100, 3: 200, 4: 500, 5: 1000 };
-const INVENTORY_UPGRADE_COSTS = { 2: 500, 3: 2000, 4: 8000, 5: 25000 };
+/* ====================== إعدادات الكريبتو ====================== */
+const DEPOSIT_TRX_ADDRESS = process.env.DEPOSIT_TRX_ADDRESS || '';
+const DEPOSIT_BSC_ADDRESS = process.env.DEPOSIT_BSC_ADDRESS || '';
+const MSDK_RATE_PER_USDT = parseInt(process.env.MSDK_RATE_PER_USDT || '1000', 10); // 1 USDT = 1000 MSDK
+const MSDK_RATE_PER_TRX  = parseInt(process.env.MSDK_RATE_PER_TRX  || '100',  10); // 1 TRX  ≈ 0.1$ → 100 MSDK
+const MSDK_RATE_PER_BNB  = parseInt(process.env.MSDK_RATE_PER_BNB  || '500000', 10); // 1 BNB ≈ $500
+const USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; // عقد USDT الرسمي على Tron
 
-// ======================== GLOBAL STATE ========================
-let gameData = { players: {}, marketListings: [], chat: [], topups: [], withdrawals: [] };
-let sseClients = {};
-
-// ======================== UTILITY FUNCTIONS ========================
-function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+// أنشئ حساب الأدمن إن لم يوجد
+const adminExists = db.prepare("SELECT id FROM users WHERE name = 'admin'").get();
+if (!adminExists) {
+  const hash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
+  const now = Date.now();
+  db.prepare(`INSERT INTO users (name, password_hash, type, created_at, last_seen, msdk)
+              VALUES (?, ?, 'admin', ?, ?, 100000)`)
+    .run('admin', hash, now, now);
+  console.log('✅ تم إنشاء حساب admin (كلمة المرور:', ADMIN_PASSWORD, ')');
 }
 
-function generateToken() {
-  return crypto.randomBytes(32).toString('hex');
-}
+// ======================== الـ Express ========================
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET','POST'] },
+});
 
-function loadGameData() {
+app.use(compression());
+app.use(cors());
+app.use(express.json({ limit: '2mb' }));
+
+// تحديد المعدل لمنع الإساءة
+const authLimiter = rateLimit({ windowMs: 60_000, max: 10 });
+const apiLimiter  = rateLimit({ windowMs: 60_000, max: 240 });
+app.use('/api/auth/', authLimiter);
+app.use('/api/',     apiLimiter);
+
+// ============== مساعدات ==============
+function makeToken(user){
+  return jwt.sign({ id: user.id, name: user.name, type: user.type }, JWT_SECRET, { expiresIn: '30d' });
+}
+function authMiddleware(req, res, next){
+  const auth = req.headers.authorization || '';
+  const token = auth.replace(/^Bearer\s+/, '');
+  if (!token) return res.status(401).json({ error: 'مطلوب تسجيل الدخول' });
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf8');
-      gameData = JSON.parse(data);
-    } else {
-      gameData = { players: {}, marketListings: [], chat: [], topups: [], withdrawals: [] };
-      saveGameData();
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = db.prepare('SELECT id, name, type, msdk, xp, level FROM users WHERE id = ?').get(decoded.id);
+    if (!user) return res.status(401).json({ error: 'مستخدم غير موجود' });
+    req.user = user;
+    db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(Date.now(), user.id);
+    next();
+  } catch(e) {
+    return res.status(401).json({ error: 'token غير صحيح' });
+  }
+}
+function adminOnly(req, res, next){
+  if (req.user?.type !== 'admin') return res.status(403).json({ error: 'صلاحيات أدمن مطلوبة' });
+  next();
+}
+function logAdmin(userId, userName, action, details=''){
+  db.prepare('INSERT INTO admin_log (user_id, user_name, action, details, time) VALUES (?, ?, ?, ?, ?)')
+    .run(userId, userName, action, details, Date.now());
+}
+function recordTx(userId, type, amount, item=null, qty=null, note='', counterparty=''){
+  db.prepare(`INSERT INTO transactions (user_id, type, amount, item, qty, note, counterparty, time)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(userId, type, amount, item, qty, note, counterparty, Date.now());
+}
+
+// ======================== مسارات المصادقة ========================
+app.post('/api/auth/register', (req, res) => {
+  const { name, password } = req.body || {};
+  if (!name || !password) return res.status(400).json({ error: 'اسم وكلمة مرور مطلوبان' });
+  if (name.length < 2 || name.length > 20) return res.status(400).json({ error: 'الاسم بين 2 و 20 حرف' });
+  if (password.length < 4) return res.status(400).json({ error: 'كلمة مرور قصيرة (4 على الأقل)' });
+  const existing = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
+  if (existing) return res.status(409).json({ error: 'الاسم محجوز' });
+  const hash = bcrypt.hashSync(password, 10);
+  const now = Date.now();
+  const result = db.prepare(`INSERT INTO users (name, password_hash, created_at, last_seen)
+                             VALUES (?, ?, ?, ?)`).run(name, hash, now, now);
+  const user = db.prepare('SELECT id, name, type, msdk, xp, level FROM users WHERE id = ?').get(result.lastInsertRowid);
+  const token = makeToken(user);
+  logAdmin(user.id, name, 'تسجيل', '');
+  res.json({ token, user });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { name, password } = req.body || {};
+  if (!name || !password) return res.status(400).json({ error: 'اسم وكلمة مرور مطلوبان' });
+  const user = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
+  if (!user) return res.status(401).json({ error: 'بيانات خاطئة' });
+  if (!bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'بيانات خاطئة' });
+  }
+  db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(Date.now(), user.id);
+  const safeUser = { id: user.id, name: user.name, type: user.type, msdk: user.msdk, xp: user.xp, level: user.level };
+  const token = makeToken(safeUser);
+  logAdmin(user.id, user.name, 'تسجيل دخول', '');
+  res.json({ token, user: safeUser });
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// ======================== حالة اللعبة ========================
+app.get('/api/game/state', authMiddleware, (req, res) => {
+  const row = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+  if (!row) return res.json({ state: null });
+  try { res.json({ state: JSON.parse(row.state_json) }); }
+  catch(e){ res.json({ state: null }); }
+});
+
+app.post('/api/game/state', authMiddleware, (req, res) => {
+  const state = req.body?.state;
+  if (!state || typeof state !== 'object') return res.status(400).json({ error: 'state مطلوب' });
+  const json = JSON.stringify(state);
+  if (json.length > 1024 * 1024) return res.status(413).json({ error: 'حجم state كبير جداً' });
+  // حدّث المستخدم بالقيم الأساسية لعرضها للأدمن
+  if (typeof state.msdk === 'number')
+    db.prepare('UPDATE users SET msdk = ?, xp = ?, level = ? WHERE id = ?')
+      .run(state.msdk|0, state.xp|0, state.level|1, req.user.id);
+  db.prepare(`INSERT INTO game_state (user_id, state_json, updated_at) VALUES (?, ?, ?)
+              ON CONFLICT(user_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`)
+    .run(req.user.id, json, Date.now());
+  res.json({ ok: true });
+});
+
+// ======================== السوق - عرض و طلب ========================
+app.get('/api/market', authMiddleware, (req, res) => {
+  const { item, sort = 'priceAsc' } = req.query;
+  let q = `SELECT id, seller_id, seller_name, item, qty, price, created_at, expires_at
+           FROM market_listings WHERE status = 'active' AND expires_at > ?`;
+  const params = [Date.now()];
+  if (item && item !== 'all') { q += ' AND item = ?'; params.push(item); }
+  // ترتيب
+  if (sort === 'priceAsc')   q += ' ORDER BY price ASC';
+  else if (sort === 'priceDesc') q += ' ORDER BY price DESC';
+  else if (sort === 'qtyDesc')   q += ' ORDER BY qty DESC';
+  else if (sort === 'qtyAsc')    q += ' ORDER BY qty ASC';
+  else                            q += ' ORDER BY created_at DESC';
+  q += ' LIMIT 200';
+  const listings = db.prepare(q).all(...params);
+  res.json({ listings });
+});
+
+// إحصائيات السوق
+app.get('/api/market/stats', authMiddleware, (req, res) => {
+  const stats = db.prepare(`
+    SELECT item, COUNT(*) as listings, SUM(qty) as total_qty,
+           MIN(price) as min_price, MAX(price) as max_price,
+           AVG(price) as avg_price
+    FROM market_listings WHERE status = 'active' AND expires_at > ?
+    GROUP BY item
+  `).all(Date.now());
+  res.json({ stats });
+});
+
+// قوائمي
+app.get('/api/market/mine', authMiddleware, (req, res) => {
+  const listings = db.prepare(`SELECT * FROM market_listings WHERE seller_id = ? AND status IN ('active','sold')
+                               ORDER BY created_at DESC LIMIT 100`).all(req.user.id);
+  res.json({ listings });
+});
+
+// عرض سلعة في السوق
+app.post('/api/market/list', authMiddleware, (req, res) => {
+  const { item, qty, price } = req.body || {};
+  if (!item || !qty || !price) return res.status(400).json({ error: 'بيانات ناقصة' });
+  if (qty <= 0 || price <= 0) return res.status(400).json({ error: 'قيم غير صالحة' });
+  if (qty > 999 || price > 1_000_000_000) return res.status(400).json({ error: 'قيم خارج النطاق' });
+  // تحقق من مخزون اللاعب من state
+  const row = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+  if (!row) return res.status(400).json({ error: 'لم يتم حفظ حالة اللعبة بعد' });
+  const state = JSON.parse(row.state_json);
+  const inv = { ...(state.crops||{}), ...(state.products||{}) };
+  if ((inv[item]||0) < qty) return res.status(400).json({ error: 'لا تملك هذه الكمية' });
+  // اخصم من state
+  if (state.crops?.[item] >= qty) {
+    state.crops[item] -= qty;
+    if (state.crops[item] <= 0) delete state.crops[item];
+  } else if (state.products?.[item] >= qty) {
+    state.products[item] -= qty;
+    if (state.products[item] <= 0) delete state.products[item];
+  }
+  db.prepare('UPDATE game_state SET state_json = ?, updated_at = ? WHERE user_id = ?')
+    .run(JSON.stringify(state), Date.now(), req.user.id);
+  // أضف عرض السوق
+  const expires = Date.now() + 24*60*60*1000;
+  const result = db.prepare(`INSERT INTO market_listings
+    (seller_id, seller_name, item, qty, price, created_at, expires_at, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`)
+    .run(req.user.id, req.user.name, item, qty, price, Date.now(), expires);
+  recordTx(req.user.id, 'list', 0, item, qty, `سعر: ${price}/قطعة`);
+  // أعلِم الجميع بالعرض الجديد
+  io.emit('market:update', { type:'new', listingId: result.lastInsertRowid });
+  res.json({ ok: true, listingId: result.lastInsertRowid });
+});
+
+// شراء من السوق
+app.post('/api/market/buy/:id', authMiddleware, (req, res) => {
+  const listingId = parseInt(req.params.id, 10);
+  const tx = db.transaction(() => {
+    const listing = db.prepare(`SELECT * FROM market_listings WHERE id = ? AND status = 'active'`).get(listingId);
+    if (!listing) throw new Error('العرض غير موجود أو انتهى');
+    if (listing.expires_at < Date.now()) throw new Error('العرض منتهي الصلاحية');
+    if (listing.seller_id === req.user.id) throw new Error('لا يمكنك شراء عرضك');
+    const total = listing.price * listing.qty;
+    const buyer = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (buyer.msdk < total) throw new Error('رصيد غير كافٍ');
+    // اخصم من المشتري
+    db.prepare('UPDATE users SET msdk = msdk - ? WHERE id = ?').run(total, req.user.id);
+    // أضف للبائع
+    db.prepare('UPDATE users SET msdk = msdk + ? WHERE id = ?').run(total, listing.seller_id);
+    // حدّث العرض
+    db.prepare(`UPDATE market_listings SET status = 'sold' WHERE id = ?`).run(listingId);
+    // أضف للمخزون في state اللاعب
+    const buyerStateRow = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+    if (buyerStateRow) {
+      const state = JSON.parse(buyerStateRow.state_json);
+      // المحاصيل العادية تذهب لـ crops، منتجات المصانع لـ products
+      const isFactoryProduct = ['flour','cornmeal','bread','cake','cheese','butter','yogurt','fabric','sweater','juice','jam','wine'].includes(listing.item);
+      const target = isFactoryProduct ? 'products' : 'crops';
+      state[target] = state[target] || {};
+      state[target][listing.item] = (state[target][listing.item]||0) + listing.qty;
+      state.msdk = (state.msdk||0) - total;
+      db.prepare('UPDATE game_state SET state_json = ?, updated_at = ? WHERE user_id = ?')
+        .run(JSON.stringify(state), Date.now(), req.user.id);
     }
-  } catch (e) {
-    console.error('Error loading game data:', e);
-    gameData = { players: {}, marketListings: [], chat: [], topups: [], withdrawals: [] };
-  }
-}
-
-function saveGameData() {
+    // أضف للبائع state - زيادة msdk
+    const sellerStateRow = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(listing.seller_id);
+    if (sellerStateRow) {
+      const sellerState = JSON.parse(sellerStateRow.state_json);
+      sellerState.msdk = (sellerState.msdk||0) + total;
+      db.prepare('UPDATE game_state SET state_json = ?, updated_at = ? WHERE user_id = ?')
+        .run(JSON.stringify(sellerState), Date.now(), listing.seller_id);
+    }
+    recordTx(req.user.id, 'buy',  -total, listing.item, listing.qty, '', listing.seller_name);
+    recordTx(listing.seller_id, 'sell', total, listing.item, listing.qty, '', req.user.name);
+    return { listing, total };
+  });
   try {
-    const dir = path.dirname(DATA_FILE);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify(gameData, null, 2));
-  } catch (e) {
-    console.error('Error saving game data:', e);
+    const { listing, total } = tx();
+    io.emit('market:update', { type:'sold', listingId });
+    // أعلم البائع
+    io.to('user:'+listing.seller_id).emit('notify', {
+      type: 'sale',
+      msg: `💰 بيعت سلعتك (${listing.qty}× ${listing.item}) بـ ${total} MSDK`,
+    });
+    res.json({ ok: true, total });
+  } catch(e) {
+    res.status(400).json({ error: e.message });
   }
-}
+});
 
-function createNewPlayer(username) {
-  return {
-    username,
-    passwordHash: '',
-    token: '',
-    msdk: 500,
-    level: 1,
-    xp: 0,
-    plots: [
-      { crop: null, plantedAt: null, watered: false },
-      { crop: null, plantedAt: null, watered: false },
+// إلغاء عرض
+app.post('/api/market/cancel/:id', authMiddleware, (req, res) => {
+  const listingId = parseInt(req.params.id, 10);
+  const listing = db.prepare(`SELECT * FROM market_listings WHERE id = ? AND status = 'active' AND seller_id = ?`)
+                    .get(listingId, req.user.id);
+  if (!listing) return res.status(404).json({ error: 'العرض غير موجود' });
+  // أرجع السلعة للبائع
+  const stateRow = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+  if (stateRow) {
+    const state = JSON.parse(stateRow.state_json);
+    const isFactoryProduct = ['flour','cornmeal','bread','cake','cheese','butter','yogurt','fabric','sweater','juice','jam','wine'].includes(listing.item);
+    const target = isFactoryProduct ? 'products' : 'crops';
+    state[target] = state[target] || {};
+    state[target][listing.item] = (state[target][listing.item]||0) + listing.qty;
+    db.prepare('UPDATE game_state SET state_json = ?, updated_at = ? WHERE user_id = ?')
+      .run(JSON.stringify(state), Date.now(), req.user.id);
+  }
+  db.prepare(`UPDATE market_listings SET status = 'cancelled' WHERE id = ?`).run(listingId);
+  recordTx(req.user.id, 'cancel', 0, listing.item, listing.qty, 'إلغاء عرض');
+  io.emit('market:update', { type:'cancelled', listingId });
+  res.json({ ok: true });
+});
+
+// ======================== المحفظة ========================
+app.get('/api/wallet', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT msdk FROM users WHERE id = ?').get(req.user.id);
+  const history = db.prepare(`SELECT * FROM transactions WHERE user_id = ? ORDER BY time DESC LIMIT 50`)
+                    .all(req.user.id);
+  res.json({ balance: user.msdk, history });
+});
+
+// شحن MSDK - في وضع التطوير، يقبل أي مبلغ. للنشر يجب الربط بـ Stripe / Web3.
+app.post('/api/wallet/deposit', authMiddleware, (req, res) => {
+  const { amount, paymentToken } = req.body || {};
+  const amt = parseInt(amount, 10);
+  if (!amt || amt <= 0 || amt > 10_000_000) return res.status(400).json({ error: 'مبلغ غير صحيح' });
+
+  // ⚠️ في الإنتاج: تحقق من paymentToken عبر Stripe API أو Web3 (التحقق من معاملة العقد الذكي)
+  // مثال على التحقق:
+  //   - Stripe: const charge = await stripe.charges.retrieve(paymentToken)
+  //   - Web3:   const tx = await provider.getTransaction(paymentToken); تحقق من to/value/from
+  if (process.env.NODE_ENV === 'production' && !paymentToken) {
+    return res.status(400).json({ error: 'paymentToken مطلوب في وضع الإنتاج' });
+  }
+
+  db.prepare('UPDATE users SET msdk = msdk + ? WHERE id = ?').run(amt, req.user.id);
+  // حدّث state
+  const sr = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+  if (sr) {
+    const st = JSON.parse(sr.state_json);
+    st.msdk = (st.msdk||0) + amt;
+    db.prepare('UPDATE game_state SET state_json = ? WHERE user_id = ?').run(JSON.stringify(st), req.user.id);
+  }
+  recordTx(req.user.id, 'deposit', amt, null, null, paymentToken ? 'دفع: '+paymentToken.slice(0,16) : 'وضع تطوير');
+  logAdmin(req.user.id, req.user.name, 'إيداع MSDK', amt+'');
+  res.json({ ok: true, balance: req.user.msdk + amt });
+});
+
+// سحب MSDK
+app.post('/api/wallet/withdraw', authMiddleware, (req, res) => {
+  const { amount, address } = req.body || {};
+  const amt = parseInt(amount, 10);
+  if (!amt || amt <= 0) return res.status(400).json({ error: 'مبلغ غير صحيح' });
+  if (!address || address.length < 10) return res.status(400).json({ error: 'عنوان السحب مطلوب' });
+  const user = db.prepare('SELECT msdk FROM users WHERE id = ?').get(req.user.id);
+  if (user.msdk < amt) return res.status(400).json({ error: 'رصيد غير كافٍ' });
+  db.prepare('UPDATE users SET msdk = msdk - ? WHERE id = ?').run(amt, req.user.id);
+  // حدّث state
+  const sr = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+  if (sr) {
+    const st = JSON.parse(sr.state_json);
+    st.msdk = (st.msdk||0) - amt;
+    db.prepare('UPDATE game_state SET state_json = ? WHERE user_id = ?').run(JSON.stringify(st), req.user.id);
+  }
+  recordTx(req.user.id, 'withdraw', -amt, null, null, 'إلى: '+address.slice(0,16));
+  logAdmin(req.user.id, req.user.name, 'سحب MSDK', amt+' إلى '+address);
+  // ⚠️ في الإنتاج: نفّذ التحويل الفعلي عبر Web3 أو Stripe Connect
+  res.json({ ok: true, balance: user.msdk - amt, txStatus: 'pending' });
+});
+
+// ======================== الإيداع بالكريبتو ========================
+// إرجاع عناوين الإيداع وأسعار الصرف
+app.get('/api/wallet/deposit-info', authMiddleware, (req, res) => {
+  res.json({
+    addresses: {
+      tron: DEPOSIT_TRX_ADDRESS,
+      bsc:  DEPOSIT_BSC_ADDRESS,
+    },
+    rates: {
+      USDT: MSDK_RATE_PER_USDT,
+      TRX:  MSDK_RATE_PER_TRX,
+      BNB:  MSDK_RATE_PER_BNB,
+    },
+    networks: [
+      { id:'tron-usdt', label:'USDT على Tron (TRC20)', currency:'USDT', addr: DEPOSIT_TRX_ADDRESS, rate: MSDK_RATE_PER_USDT, fee:'~1 TRX (~$0.30)' },
+      { id:'tron-trx',  label:'TRX على Tron',         currency:'TRX',  addr: DEPOSIT_TRX_ADDRESS, rate: MSDK_RATE_PER_TRX,  fee:'~1 TRX' },
+      { id:'bsc-bnb',   label:'BNB على BSC',          currency:'BNB',  addr: DEPOSIT_BSC_ADDRESS, rate: MSDK_RATE_PER_BNB,  fee:'~$0.20' },
     ],
-    inventory: {},
-    invLevel: 1,
-    ownedPens: {},
-    ownedFactories: [],
-    premiumFeatures: {},
-    premiumExpires: {},
-    lastAutoProcess: Date.now(),
-    online: false,
-    lastSeen: Date.now(),
-  };
-}
-
-function findPlayerByToken(token) {
-  for (const username in gameData.players) {
-    if (gameData.players[username].token === token) {
-      return { username, player: gameData.players[username] };
-    }
-  }
-  return null;
-}
-
-function getCropByID(id) {
-  return CROPS.find(c => c.id === id);
-}
-
-function getAnimalByID(id) {
-  return ANIMALS.find(a => a.id === id);
-}
-
-function getPenByID(id) {
-  return PENS.find(p => p.id === id);
-}
-
-function getFactoryByID(id) {
-  return FACTORIES.find(f => f.id === id);
-}
-
-function getPremiumByID(id) {
-  return PREMIUM.find(p => p.id === id);
-}
-
-function calculateXPNeeded(level) {
-  return Math.floor(500 * Math.pow(level, 1.8));
-}
-
-function addXP(player, amount) {
-  if (player.premiumFeatures.double_xp && player.premiumExpires.double_xp > Date.now()) {
-    amount *= 2;
-  }
-  player.xp += amount;
-
-  while (player.xp >= calculateXPNeeded(player.level)) {
-    player.xp -= calculateXPNeeded(player.level);
-    player.level += 1;
-  }
-}
-
-function getInventoryCapacity(player) {
-  return INVENTORY_LEVELS[Math.min(player.invLevel, 5)] || 1000;
-}
-
-function getInventoryUsed(player) {
-  return Object.values(player.inventory).reduce((a, b) => a + b, 0);
-}
-
-function parsJSONBody(req, callback) {
-  let body = '';
-  req.on('data', chunk => {
-    body += chunk.toString();
   });
-  req.on('end', () => {
-    try {
-      const data = body ? JSON.parse(body) : {};
-      callback(data);
-    } catch {
-      callback({});
-    }
-  });
-}
+});
 
-function broadcast(event, data) {
-  for (const clientId in sseClients) {
-    if (sseClients[clientId] && sseClients[clientId].res && !sseClients[clientId].res.destroyed) {
-      sseClients[clientId].res.write(`data: ${JSON.stringify({ event, data })}\n\n`);
-    }
+// تاريخ إيداعاتي الكريبتو
+app.get('/api/wallet/crypto-history', authMiddleware, (req, res) => {
+  const list = db.prepare(`SELECT * FROM crypto_deposits WHERE user_id = ? ORDER BY created_at DESC LIMIT 30`)
+                  .all(req.user.id);
+  res.json({ deposits: list });
+});
+
+// التحقق من معاملة كريبتو وإيداع MSDK
+app.post('/api/wallet/crypto-deposit', authMiddleware, async (req, res) => {
+  const { network, txHash } = req.body || {};
+  if (!network || !txHash) return res.status(400).json({ error: 'الشبكة و tx hash مطلوبان' });
+
+  const cleanHash = String(txHash).trim().replace(/^0x/i, '');
+
+  // تحقق أنها لم تستخدم من قبل
+  const exists = db.prepare('SELECT id, user_id FROM crypto_deposits WHERE tx_hash = ?').get(cleanHash);
+  if (exists) {
+    return res.status(409).json({ error: 'هذه المعاملة تم استخدامها من قبل' });
   }
-}
 
-function sendJSON(res, statusCode, data) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-  res.end(JSON.stringify(data));
-}
-
-function sendSSE(res) {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-  });
-  return res;
-}
-
-function serveStatic(res, filePath) {
   try {
-    const fullPath = path.join(PUBLIC_DIR, filePath);
-    if (!fullPath.startsWith(PUBLIC_DIR)) {
-      res.writeHead(403);
-      res.end('Forbidden');
-      return;
-    }
-
-    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-      const content = fs.readFileSync(fullPath);
-      const ext = path.extname(filePath).toLowerCase();
-      let contentType = 'text/plain';
-      if (ext === '.html') contentType = 'text/html';
-      else if (ext === '.css') contentType = 'text/css';
-      else if (ext === '.js') contentType = 'application/javascript';
-      else if (ext === '.json') contentType = 'application/json';
-      else if (ext === '.png') contentType = 'image/png';
-      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
-
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content);
+    let verified = null;
+    if (network === 'tron-usdt' || network === 'tron-trx') {
+      verified = await verifyTronTx(cleanHash, DEPOSIT_TRX_ADDRESS, network === 'tron-usdt' ? 'USDT' : 'TRX');
+    } else if (network === 'bsc-bnb') {
+      verified = await verifyBscTx(cleanHash, DEPOSIT_BSC_ADDRESS);
     } else {
-      res.writeHead(404);
-      res.end('Not Found');
+      return res.status(400).json({ error: 'شبكة غير مدعومة' });
     }
+
+    if (!verified.success) {
+      return res.status(400).json({ error: verified.error || 'فشل التحقق من المعاملة' });
+    }
+
+    const { currency, amount, fromAddress } = verified;
+    const rates = { USDT: MSDK_RATE_PER_USDT, TRX: MSDK_RATE_PER_TRX, BNB: MSDK_RATE_PER_BNB };
+    const rate = rates[currency] || 0;
+    if (rate === 0) return res.status(400).json({ error: 'عملة غير مدعومة' });
+
+    const msdkAmount = Math.floor(amount * rate);
+    if (msdkAmount <= 0) return res.status(400).json({ error: 'المبلغ صغير جداً' });
+
+    // إضافة الرصيد + تسجيل المعاملة
+    const tx = db.transaction(() => {
+      db.prepare('UPDATE users SET msdk = msdk + ? WHERE id = ?').run(msdkAmount, req.user.id);
+      db.prepare(`INSERT INTO crypto_deposits
+        (user_id, network, currency, tx_hash, from_address, amount_crypto, amount_msdk, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(req.user.id, network, currency, cleanHash, fromAddress||'', amount, msdkAmount, Date.now());
+
+      // تحديث game_state
+      const sr = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(req.user.id);
+      if (sr) {
+        const st = JSON.parse(sr.state_json);
+        st.msdk = (st.msdk || 0) + msdkAmount;
+        db.prepare('UPDATE game_state SET state_json = ? WHERE user_id = ?')
+          .run(JSON.stringify(st), req.user.id);
+      }
+    });
+    tx();
+
+    recordTx(req.user.id, 'crypto_deposit', msdkAmount, currency, null,
+             `${amount} ${currency} → ${msdkAmount} MSDK`, cleanHash.slice(0,16)+'...');
+    logAdmin(req.user.id, req.user.name, 'إيداع كريبتو',
+             `${amount} ${currency} = ${msdkAmount} MSDK · ${network}`);
+
+    res.json({ ok: true, msdkAmount, currency, amount, txHash: cleanHash });
   } catch (e) {
-    res.writeHead(500);
-    res.end('Server Error');
+    console.error('crypto-deposit error:', e);
+    res.status(500).json({ error: 'خطأ داخلي: ' + e.message });
   }
-}
-
-// ======================== AUTO-PROCESSING ========================
-function processAutoFeatures() {
-  for (const username in gameData.players) {
-    const player = gameData.players[username];
-    if (!player.online) continue;
-
-    const now = Date.now();
-    if (now - player.lastAutoProcess < 60000) continue;
-    player.lastAutoProcess = now;
-
-    // Auto-water
-    if (player.premiumFeatures.auto_water) {
-      for (const plot of player.plots) {
-        if (plot.crop && !plot.watered) {
-          plot.watered = true;
-        }
-      }
-    }
-
-    // Auto-harvest
-    if (player.premiumFeatures.auto_harvest) {
-      for (let i = 0; i < player.plots.length; i++) {
-        const plot = player.plots[i];
-        if (plot.crop && plot.watered && plot.plantedAt) {
-          const crop = getCropByID(plot.crop);
-          if (crop && now - plot.plantedAt >= crop.growTime) {
-            addInventoryItem(player, plot.crop, 1);
-            addXP(player, crop.xp);
-            plot.crop = null;
-            plot.plantedAt = null;
-            plot.watered = false;
-          }
-        }
-      }
-    }
-
-    // Auto-plant
-    if (player.premiumFeatures.auto_plant) {
-      for (const plot of player.plots) {
-        if (!plot.crop) {
-          const crop = getCropByID('onion');
-          if (crop && player.msdk >= crop.cost && getInventoryUsed(player) < getInventoryCapacity(player)) {
-            player.msdk -= crop.cost;
-            plot.crop = 'onion';
-            plot.plantedAt = Date.now();
-            plot.watered = false;
-          }
-        }
-      }
-    }
-
-    // Auto-collect
-    if (player.premiumFeatures.auto_collect) {
-      for (const penId in player.ownedPens) {
-        const pen = player.ownedPens[penId];
-        if (!pen.animals) continue;
-
-        const animalDef = getAnimalByID(pen.animalId);
-        if (!animalDef) continue;
-
-        for (const animal of pen.animals) {
-          if (now - animal.lastCollect >= animalDef.prodTime) {
-            addInventoryItem(player, animalDef.product, 1);
-            addXP(player, animalDef.xp);
-            animal.lastCollect = now;
-          }
-        }
-      }
-    }
-  }
-  saveGameData();
-}
-
-function addInventoryItem(player, itemId, qty) {
-  if (!player.inventory[itemId]) player.inventory[itemId] = 0;
-  const used = getInventoryUsed(player);
-  const capacity = getInventoryCapacity(player);
-  const canAdd = Math.min(qty, capacity - used);
-  player.inventory[itemId] += canAdd;
-}
-
-// ======================== REQUEST HANDLER ========================
-const server = http.createServer((req, res) => {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
-  }
-
-  const parsedUrl = url.parse(req.url, true);
-  const pathname = parsedUrl.pathname;
-  const query = parsedUrl.query;
-
-  // Static files
-  if (pathname === '/' || pathname.startsWith('/public/') || pathname.match(/\.(html|css|js|png|jpg|json)$/)) {
-    const filePath = pathname === '/' ? '/index.html' : pathname;
-    serveStatic(res, filePath);
-    return;
-  }
-
-  // ======================== AUTH ROUTES ========================
-  if (pathname === '/api/register' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { username, password } = data;
-      if (!username || !password) return sendJSON(res, 400, { error: 'Missing credentials' });
-      if (gameData.players[username]) return sendJSON(res, 400, { error: 'User exists' });
-
-      const player = createNewPlayer(username);
-      player.passwordHash = hashPassword(password);
-      player.token = generateToken();
-      gameData.players[username] = player;
-      saveGameData();
-
-      return sendJSON(res, 201, { token: player.token, username });
-    });
-    return;
-  }
-
-  if (pathname === '/api/login' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { username, password } = data;
-      if (!username || !password) return sendJSON(res, 400, { error: 'Missing credentials' });
-
-      const player = gameData.players[username];
-      if (!player || player.passwordHash !== hashPassword(password)) {
-        return sendJSON(res, 401, { error: 'Invalid credentials' });
-      }
-
-      player.token = generateToken();
-      player.online = true;
-      player.lastSeen = Date.now();
-      saveGameData();
-
-      return sendJSON(res, 200, { token: player.token, username });
-    });
-    return;
-  }
-
-  // Auth middleware
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace('Bearer ', '');
-  const auth = findPlayerByToken(token);
-
-  if (!auth && pathname !== '/' && !pathname.match(/^\/public\//)) {
-    return sendJSON(res, 401, { error: 'Unauthorized' });
-  }
-
-  const { username, player } = auth || {};
-
-  // ======================== CROP ROUTES ========================
-  if (pathname === '/api/crops' && req.method === 'GET') {
-    return sendJSON(res, 200, CROPS);
-  }
-
-  if (pathname === '/api/plant' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { plotIndex, cropId } = data;
-      if (typeof plotIndex !== 'number' || !cropId) {
-        return sendJSON(res, 400, { error: 'Invalid data' });
-      }
-
-      const crop = getCropByID(cropId);
-      if (!crop) return sendJSON(res, 400, { error: 'Crop not found' });
-      if (player.msdk < crop.cost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-      if (!player.plots[plotIndex]) return sendJSON(res, 400, { error: 'Plot not found' });
-
-      const plot = player.plots[plotIndex];
-      if (plot.crop) return sendJSON(res, 400, { error: 'Plot occupied' });
-
-      player.msdk -= crop.cost;
-      plot.crop = cropId;
-      plot.plantedAt = Date.now();
-      plot.watered = false;
-
-      broadcast('game-update', { type: 'crop-planted', username, plotIndex, cropId });
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/water' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { plotIndex } = data;
-      if (typeof plotIndex !== 'number') return sendJSON(res, 400, { error: 'Invalid data' });
-
-      const plot = player.plots[plotIndex];
-      if (!plot || !plot.crop) return sendJSON(res, 400, { error: 'No crop in plot' });
-      if (plot.watered) return sendJSON(res, 400, { error: 'Already watered' });
-
-      plot.watered = true;
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/harvest' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { plotIndex } = data;
-      if (typeof plotIndex !== 'number') return sendJSON(res, 400, { error: 'Invalid data' });
-
-      const plot = player.plots[plotIndex];
-      if (!plot || !plot.crop) return sendJSON(res, 400, { error: 'No crop in plot' });
-
-      const crop = getCropByID(plot.crop);
-      if (!crop || !plot.watered || Date.now() - plot.plantedAt < crop.growTime) {
-        return sendJSON(res, 400, { error: 'Crop not ready' });
-      }
-
-      if (getInventoryUsed(player) >= getInventoryCapacity(player)) {
-        return sendJSON(res, 400, { error: 'Inventory full' });
-      }
-
-      addInventoryItem(player, plot.crop, 1);
-      addXP(player, crop.xp);
-      plot.crop = null;
-      plot.plantedAt = null;
-      plot.watered = false;
-
-      broadcast('game-update', { type: 'harvest', username });
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true, xp: crop.xp });
-    });
-    return;
-  }
-
-  // ======================== ANIMAL/PEN ROUTES ========================
-  if (pathname === '/api/pens' && req.method === 'GET') {
-    return sendJSON(res, 200, PENS.map(p => ({ ...p, owned: player.ownedPens.hasOwnProperty(p.id) })));
-  }
-
-  if (pathname === '/api/buy-pen' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { penId } = data;
-      const pen = getPenByID(penId);
-      if (!pen) return sendJSON(res, 400, { error: 'Pen not found' });
-      if (player.level < pen.unlockLevel) return sendJSON(res, 400, { error: 'Level too low' });
-      if (player.msdk < pen.cost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-      if (player.ownedPens[penId]) {
-        return sendJSON(res, 400, { error: 'Pen already owned' });
-      }
-
-      player.msdk -= pen.cost;
-      player.ownedPens[penId] = { level: 1, animals: [], animalId: pen.animalId };
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/animals' && req.method === 'GET') {
-    return sendJSON(res, 200, ANIMALS);
-  }
-
-  if (pathname === '/api/buy-animal' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { animalId } = data;
-      const animal = getAnimalByID(animalId);
-      if (!animal) return sendJSON(res, 400, { error: 'Animal not found' });
-      if (player.level < animal.unlockLevel) return sendJSON(res, 400, { error: 'Level too low' });
-      if (player.msdk < animal.cost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-      const pen = player.ownedPens[animal.penId];
-      if (!pen) return sendJSON(res, 400, { error: 'Need pen first' });
-      if (pen.animals.length >= PENS.find(p => p.id === animal.penId).capacity) {
-        return sendJSON(res, 400, { error: 'Pen full' });
-      }
-
-      player.msdk -= animal.cost;
-      pen.animals.push({ boughtAt: Date.now(), lastCollect: Date.now() });
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/collect' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { penId } = data;
-      const pen = player.ownedPens[penId];
-      if (!pen || !pen.animals) return sendJSON(res, 400, { error: 'Pen not found' });
-
-      const animal = getAnimalByID(pen.animalId);
-      if (!animal) return sendJSON(res, 400, { error: 'Animal type not found' });
-
-      let collected = 0;
-      let xpGain = 0;
-
-      for (let i = 0; i < pen.animals.length; i++) {
-        const instance = pen.animals[i];
-        if (Date.now() - instance.lastCollect >= animal.prodTime) {
-          if (getInventoryUsed(player) < getInventoryCapacity(player)) {
-            addInventoryItem(player, animal.product, 1);
-            xpGain += animal.xp;
-            collected++;
-            instance.lastCollect = Date.now();
-          }
-        }
-      }
-
-      if (collected === 0) return sendJSON(res, 400, { error: 'Nothing to collect' });
-
-      addXP(player, xpGain);
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true, collected, xp: xpGain });
-    });
-    return;
-  }
-
-  // ======================== LAND ROUTES ========================
-  if (pathname === '/api/buy-land' && req.method === 'POST') {
-    const plotCount = player.plots.length;
-    const landCost = 200 * Math.pow(2, plotCount - 2);
-
-    if (player.msdk < landCost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-    player.msdk -= landCost;
-    player.plots.push({ crop: null, plantedAt: null, watered: false });
-    saveGameData();
-
-    return sendJSON(res, 200, { success: true, totalPlots: player.plots.length });
-  }
-
-  // ======================== INVENTORY ROUTES ========================
-  if (pathname === '/api/inventory' && req.method === 'GET') {
-    const capacity = getInventoryCapacity(player);
-    const used = getInventoryUsed(player);
-
-    return sendJSON(res, 200, {
-      items: player.inventory,
-      level: player.invLevel,
-      capacity,
-      used,
-      canUpgrade: player.invLevel < 5,
-      upgradeCost: INVENTORY_UPGRADE_COSTS[player.invLevel + 1] || null,
-    });
-  }
-
-  if (pathname === '/api/upgrade-inventory' && req.method === 'POST') {
-    const nextLevel = player.invLevel + 1;
-    if (nextLevel > 5) return sendJSON(res, 400, { error: 'Max level' });
-
-    const cost = INVENTORY_UPGRADE_COSTS[nextLevel];
-    if (player.msdk < cost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-    player.msdk -= cost;
-    player.invLevel = nextLevel;
-    saveGameData();
-
-    return sendJSON(res, 200, { success: true, newLevel: nextLevel });
-  }
-
-  // ======================== FACTORY ROUTES ========================
-  if (pathname === '/api/factories' && req.method === 'GET') {
-    return sendJSON(res, 200, FACTORIES.map(f => ({
-      ...f,
-      unlocked: player.level >= f.unlockLevel,
-      ownedCount: player.ownedFactories.filter(of => of.factoryId === f.id).length,
-    })));
-  }
-
-  if (pathname === '/api/buy-factory' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { factoryId } = data;
-      const factory = getFactoryByID(factoryId);
-      if (!factory) return sendJSON(res, 400, { error: 'Factory not found' });
-      if (player.level < factory.unlockLevel) return sendJSON(res, 400, { error: 'Level too low' });
-      if (player.msdk < factory.cost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-      player.msdk -= factory.cost;
-      player.ownedFactories.push({ factoryId, startedAt: null, producing: false });
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/start-production' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { factoryIndex } = data;
-      const ownedFactory = player.ownedFactories[factoryIndex];
-      if (!ownedFactory) return sendJSON(res, 400, { error: 'Factory not found' });
-
-      const factory = getFactoryByID(ownedFactory.factoryId);
-      const inputQty = player.inventory[factory.input] || 0;
-
-      if (inputQty < factory.inputQty) {
-        return sendJSON(res, 400, { error: `Need ${factory.inputQty} ${factory.input}` });
-      }
-      if (ownedFactory.producing) {
-        return sendJSON(res, 400, { error: 'Already producing' });
-      }
-
-      player.inventory[factory.input] -= factory.inputQty;
-      ownedFactory.startedAt = Date.now();
-      ownedFactory.producing = true;
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/collect-factory' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { factoryIndex } = data;
-      const ownedFactory = player.ownedFactories[factoryIndex];
-      if (!ownedFactory) return sendJSON(res, 400, { error: 'Factory not found' });
-      if (!ownedFactory.producing) return sendJSON(res, 400, { error: 'Not producing' });
-
-      const factory = getFactoryByID(ownedFactory.factoryId);
-      if (Date.now() - ownedFactory.startedAt < factory.prodTime) {
-        return sendJSON(res, 400, { error: 'Not ready' });
-      }
-
-      if (getInventoryUsed(player) >= getInventoryCapacity(player)) {
-        return sendJSON(res, 400, { error: 'Inventory full' });
-      }
-
-      addInventoryItem(player, factory.output, factory.outputQty);
-      addXP(player, factory.xp);
-      ownedFactory.producing = false;
-      ownedFactory.startedAt = null;
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true, xp: factory.xp });
-    });
-    return;
-  }
-
-  // ======================== MARKET ROUTES ========================
-  if (pathname === '/api/market/listings' && req.method === 'GET') {
-    return sendJSON(res, 200, gameData.marketListings);
-  }
-
-  if (pathname === '/api/market/list' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { item, qty, pricePerUnit } = data;
-      if (!item || !qty || !pricePerUnit) return sendJSON(res, 400, { error: 'Invalid data' });
-
-      const invQty = player.inventory[item] || 0;
-      if (invQty < qty) return sendJSON(res, 400, { error: 'Not enough items' });
-
-      player.inventory[item] -= qty;
-      const listing = {
-        id: crypto.randomBytes(8).toString('hex'),
-        seller: username,
-        item,
-        qty,
-        pricePerUnit,
-        listedAt: Date.now(),
-      };
-      gameData.marketListings.push(listing);
-
-      broadcast('market-update', { type: 'new-listing', listing });
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true, listingId: listing.id });
-    });
-    return;
-  }
-
-  if (pathname === '/api/market/buy' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { listingId } = data;
-      const listing = gameData.marketListings.find(l => l.id === listingId);
-      if (!listing) return sendJSON(res, 400, { error: 'Listing not found' });
-
-      const totalCost = listing.qty * listing.pricePerUnit;
-      if (player.msdk < totalCost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-      const capacityLeft = getInventoryCapacity(player) - getInventoryUsed(player);
-      if (capacityLeft < listing.qty) return sendJSON(res, 400, { error: 'Inventory full' });
-
-      const seller = gameData.players[listing.seller];
-      if (!seller) return sendJSON(res, 400, { error: 'Seller not found' });
-
-      player.msdk -= totalCost;
-      seller.msdk += totalCost;
-      addInventoryItem(player, listing.item, listing.qty);
-
-      gameData.marketListings = gameData.marketListings.filter(l => l.id !== listingId);
-
-      broadcast('market-update', { type: 'purchase', listingId, buyer: username });
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  // ======================== PREMIUM ROUTES ========================
-  if (pathname === '/api/premium' && req.method === 'GET') {
-    return sendJSON(res, 200, PREMIUM.map(p => ({
-      ...p,
-      owned: player.premiumFeatures.hasOwnProperty(p.id),
-      expiresAt: player.premiumExpires[p.id] || null,
-    })));
-  }
-
-  if (pathname === '/api/buy-premium' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { featureId } = data;
-      const premium = getPremiumByID(featureId);
-      if (!premium) return sendJSON(res, 400, { error: 'Feature not found' });
-      if (player.msdk < premium.cost) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-      player.msdk -= premium.cost;
-      player.premiumFeatures[featureId] = true;
-      if (premium.duration) {
-        player.premiumExpires[featureId] = Date.now() + premium.duration;
-      }
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  // ======================== TOPUP ROUTES ========================
-  if (pathname === '/api/topup/create' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { amount, currency, txHash } = data;
-      if (!amount || !currency) return sendJSON(res, 400, { error: 'Invalid data' });
-
-      const topupId = crypto.randomBytes(8).toString('hex');
-      const wallets = {
-        'USDT_TRC20': process.env.WALLET_USDT || 'TN7isGhAP5ynyGutzYSkaEVRiMwqjBW9BJ',
-        'BTC': process.env.WALLET_BTC || '1A1z7agoat4WFhUuCg6N6xWxYu5P9nUVZX',
-        'ETH': process.env.WALLET_ETH || '0x742d35Cc6634C0532925a3b844Bc9e7595f42aE1',
-      };
-
-      const topup = {
-        id: topupId,
-        username,
-        amount,
-        currency,
-        txHash: txHash || '',
-        walletAddress: wallets[currency] || 'unknown',
-        status: 'pending',
-        requestedAt: Date.now(),
-      };
-      gameData.topups.push(topup);
-      saveGameData();
-
-      return sendJSON(res, 201, {
-        topupId,
-        paymentId: topupId,
-        amount,
-        currency,
-        walletAddress: topup.walletAddress,
-      });
-    });
-    return;
-  }
-
-  if (pathname.match(/^\/api\/topup\/check\//) && req.method === 'GET') {
-    const paymentId = pathname.split('/')[4];
-    const topup = gameData.topups.find(t => t.id === paymentId);
-    if (!topup) return sendJSON(res, 404, { error: 'Payment not found' });
-
-    return sendJSON(res, 200, { status: topup.status, amount: topup.amount });
-  }
-
-  if (pathname === '/api/topup/webhook' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { payment_id, status } = data;
-      const topup = gameData.topups.find(t => t.id === payment_id);
-      if (!topup) return sendJSON(res, 404, { error: 'Payment not found' });
-
-      if (status === 'finished') {
-        topup.status = 'completed';
-        const topupPlayer = gameData.players[topup.username];
-        if (topupPlayer) {
-          topupPlayer.msdk += topup.amount;
-        }
-        saveGameData();
-      }
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  // ======================== WITHDRAWAL ROUTES ========================
-  if (pathname === '/api/withdraw/request' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { amount, walletAddress, currency } = data;
-      if (!amount || !walletAddress || !currency) return sendJSON(res, 400, { error: 'Invalid data' });
-      if (amount < 100) return sendJSON(res, 400, { error: 'Minimum 100 MSDK' });
-      if (player.msdk < amount) return sendJSON(res, 400, { error: 'Not enough MSDK' });
-
-      const withdrawId = crypto.randomBytes(8).toString('hex');
-      const withdrawal = {
-        id: withdrawId,
-        username,
-        amount,
-        walletAddress,
-        currency,
-        status: 'pending',
-        requestedAt: Date.now(),
-      };
-
-      player.msdk -= amount;
-      gameData.withdrawals.push(withdrawal);
-      saveGameData();
-
-      return sendJSON(res, 201, { withdrawalId: withdrawId });
-    });
-    return;
-  }
-
-  if (pathname === '/api/withdraw/history' && req.method === 'GET') {
-    const userWithdrawals = gameData.withdrawals.filter(w => w.username === username);
-    return sendJSON(res, 200, userWithdrawals);
-  }
-
-  // ======================== PLAYER/PROFILE ROUTES ========================
-  if (pathname === '/api/player' && req.method === 'GET') {
-    return sendJSON(res, 200, {
-      username,
-      msdk: player.msdk,
-      level: player.level,
-      xp: player.xp,
-      xpNeeded: calculateXPNeeded(player.level),
-      plots: player.plots.length,
-      online: player.online,
-    });
-  }
-
-  if (pathname === '/api/player/full' && req.method === 'GET') {
-    return sendJSON(res, 200, player);
-  }
-
-  if (pathname === '/api/logout' && req.method === 'POST') {
-    player.online = false;
-    player.lastSeen = Date.now();
-    saveGameData();
-    return sendJSON(res, 200, { success: true });
-  }
-
-  // ======================== CHAT ROUTES ========================
-  if (pathname === '/api/chat/send' && req.method === 'POST') {
-    parsJSONBody(req, (data) => {
-      const { message } = data;
-      if (!message || message.length > 500) return sendJSON(res, 400, { error: 'Invalid message' });
-
-      const chatMsg = {
-        username,
-        message,
-        timestamp: Date.now(),
-      };
-      gameData.chat.push(chatMsg);
-      if (gameData.chat.length > 100) gameData.chat.shift();
-
-      broadcast('chat-message', chatMsg);
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/chat/messages' && req.method === 'GET') {
-    return sendJSON(res, 200, gameData.chat.slice(-50));
-  }
-
-  // ======================== SSE ROUTES ========================
-  if (pathname === '/api/events' && req.method === 'GET') {
-    const clientId = crypto.randomBytes(8).toString('hex');
-    const sseRes = sendSSE(res);
-    sseClients[clientId] = { res: sseRes, username };
-
-    sseRes.write(`: connected\n\n`);
-
-    req.on('close', () => {
-      delete sseClients[clientId];
-    });
-    return;
-  }
-
-  // ======================== ADMIN ROUTES ========================
-  if (pathname === '/api/admin/stats' && req.method === 'GET') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    const onlineCount = Object.values(gameData.players).filter(p => p.online).length;
-    const totalMSDK = Object.values(gameData.players).reduce((a, p) => a + p.msdk, 0);
-    const pendingTopups = gameData.topups.filter(t => t.status === 'pending').length;
-    const pendingWithdrawals = gameData.withdrawals.filter(w => w.status === 'pending').length;
-
-    return sendJSON(res, 200, {
-      totalPlayers: Object.keys(gameData.players).length,
-      onlineCount,
-      totalMSDK,
-      pendingTopups,
-      pendingWithdrawals,
-    });
-  }
-
-  if (pathname === '/api/admin/topups' && req.method === 'GET') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-    return sendJSON(res, 200, gameData.topups || []);
-  }
-
-  if (pathname === '/api/admin/withdrawals' && req.method === 'GET') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-    return sendJSON(res, 200, gameData.withdrawals || []);
-  }
-
-  if (pathname === '/api/admin/players' && req.method === 'GET') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    const players = Object.entries(gameData.players).map(([name, p]) => ({
-      username: name,
-      msdk: p.msdk,
-      level: p.level,
-      online: p.online,
-      lastSeen: p.lastSeen,
-    }));
-
-    return sendJSON(res, 200, players);
-  }
-
-  if (pathname === '/api/admin/grant' && req.method === 'POST') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    parsJSONBody(req, (data) => {
-      const { username: targetUser, amount } = data;
-      if (!targetUser || !amount) return sendJSON(res, 400, { error: 'Invalid data' });
-
-      const targetPlayer = gameData.players[targetUser];
-      if (!targetPlayer) return sendJSON(res, 404, { error: 'Player not found' });
-
-      targetPlayer.msdk += amount;
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true, newBalance: targetPlayer.msdk });
-    });
-    return;
-  }
-
-  if (pathname === '/api/admin/topup/approve' && req.method === 'POST') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    parsJSONBody(req, (data) => {
-      const { topupId } = data;
-      const topup = gameData.topups.find(t => t.id === topupId);
-      if (!topup) return sendJSON(res, 404, { error: 'Topup not found' });
-
-      topup.status = 'approved';
-      const topupPlayer = gameData.players[topup.username];
-      if (topupPlayer) topupPlayer.msdk += topup.amount;
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/admin/topup/reject' && req.method === 'POST') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    parsJSONBody(req, (data) => {
-      const { topupId } = data;
-      const topup = gameData.topups.find(t => t.id === topupId);
-      if (!topup) return sendJSON(res, 404, { error: 'Topup not found' });
-
-      topup.status = 'rejected';
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/admin/withdraw/approve' && req.method === 'POST') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    parsJSONBody(req, (data) => {
-      const { withdrawId } = data;
-      const withdrawal = gameData.withdrawals.find(w => w.id === withdrawId);
-      if (!withdrawal) return sendJSON(res, 404, { error: 'Withdrawal not found' });
-
-      withdrawal.status = 'approved';
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  if (pathname === '/api/admin/withdraw/reject' && req.method === 'POST') {
-    if (username !== ADMIN_USERNAME) return sendJSON(res, 403, { error: 'Admin only' });
-
-    parsJSONBody(req, (data) => {
-      const { withdrawId } = data;
-      const withdrawal = gameData.withdrawals.find(w => w.id === withdrawId);
-      if (!withdrawal) return sendJSON(res, 404, { error: 'Withdrawal not found' });
-
-      const targetPlayer = gameData.players[withdrawal.username];
-      if (targetPlayer) targetPlayer.msdk += withdrawal.amount;
-
-      withdrawal.status = 'rejected';
-      saveGameData();
-
-      return sendJSON(res, 200, { success: true });
-    });
-    return;
-  }
-
-  // 404
-  sendJSON(res, 404, { error: 'Not found' });
 });
 
-// ======================== STARTUP ========================
-loadGameData();
+// التحقق من معاملة Tron عبر tronscan public API
+async function verifyTronTx(txHash, expectedAddress, expectedCurrency) {
+  if (!expectedAddress) return { success:false, error: 'عنوان الإيداع Tron غير مكوّن. اطلب من الأدمن إضافة DEPOSIT_TRX_ADDRESS' };
 
-// Auto-save every 30 seconds
-setInterval(() => {
-  saveGameData();
-}, 30000);
+  const url = `https://apilist.tronscanapi.com/api/transaction-info?hash=${txHash}`;
+  let resp;
+  try { resp = await fetch(url, { headers: { 'Accept': 'application/json' } }); }
+  catch (e) { return { success:false, error: 'فشل الاتصال بـ tronscan: ' + e.message }; }
 
-// Auto-process premium features every 60 seconds
-setInterval(() => {
-  processAutoFeatures();
-}, 60000);
+  if (!resp.ok) return { success:false, error: 'tronscan رد بـ ' + resp.status };
+  const data = await resp.json();
 
-server.listen(PORT, () => {
-  console.log(`MSDK Farm server running on port ${PORT}`);
+  if (!data || data.contractRet !== 'SUCCESS') {
+    return { success:false, error: 'المعاملة لم تنجح على البلوكشين' };
+  }
+
+  // 1) USDT TRC20 transfer
+  if (expectedCurrency === 'USDT') {
+    const transfer = data.trc20TransferInfo && data.trc20TransferInfo[0];
+    if (!transfer) return { success:false, error: 'لم يُعثر على تحويل TRC20 في هذه المعاملة' };
+    if (transfer.contract_address !== USDT_TRC20_CONTRACT) {
+      return { success:false, error: 'العقد ليس USDT - تأكد أنك أرسلت USDT الرسمي' };
+    }
+    if (transfer.to_address !== expectedAddress) {
+      return { success:false, error: 'العنوان المستلم لا يطابق عنواننا. أرسلت إلى: ' + transfer.to_address };
+    }
+    const amount = parseInt(transfer.amount_str || transfer.quant, 10) / 1e6; // USDT 6 decimals
+    return { success:true, currency:'USDT', amount, fromAddress: transfer.from_address };
+  }
+
+  // 2) Native TRX
+  if (expectedCurrency === 'TRX') {
+    const cd = data.contractData || {};
+    if (cd.to_address !== expectedAddress) {
+      return { success:false, error: 'العنوان المستلم لا يطابق' };
+    }
+    const amount = (cd.amount || 0) / 1e6;
+    return { success:true, currency:'TRX', amount, fromAddress: cd.owner_address };
+  }
+
+  return { success:false, error: 'نوع المعاملة غير مدعوم' };
+}
+
+// التحقق من معاملة BSC
+async function verifyBscTx(txHash, expectedAddress) {
+  if (!expectedAddress) return { success:false, error: 'عنوان الإيداع BSC غير مكوّن. اطلب من الأدمن إضافة DEPOSIT_BSC_ADDRESS' };
+
+  const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=0x${txHash}`;
+  let resp;
+  try { resp = await fetch(url, { headers: { 'Accept': 'application/json' } }); }
+  catch (e) { return { success:false, error: 'فشل الاتصال بـ bscscan: ' + e.message }; }
+
+  if (!resp.ok) return { success:false, error: 'bscscan رد بـ ' + resp.status };
+  const data = await resp.json();
+  if (!data.result) return { success:false, error: 'المعاملة غير موجودة بعد. انتظر دقيقة وحاول' };
+
+  const tx = data.result;
+  if (!tx.to || tx.to.toLowerCase() !== expectedAddress.toLowerCase()) {
+    return { success:false, error: 'العنوان المستلم لا يطابق' };
+  }
+  const amount = parseInt(tx.value, 16) / 1e18;
+  if (amount <= 0) return { success:false, error: 'مبلغ المعاملة صفر' };
+  return { success:true, currency:'BNB', amount, fromAddress: tx.from };
+}
+
+// ======================== الدردشة ========================
+app.get('/api/chat/recent', authMiddleware, (req, res) => {
+  const messages = db.prepare(`SELECT * FROM chat_messages ORDER BY time DESC LIMIT 50`).all();
+  res.json({ messages: messages.reverse() });
 });
+
+// ======================== الأدمن ========================
+app.get('/api/admin/players', authMiddleware, adminOnly, (req, res) => {
+  const players = db.prepare(`SELECT id, name, type, created_at, last_seen, msdk, xp, level FROM users
+                              ORDER BY last_seen DESC LIMIT 200`).all();
+  res.json({ players });
+});
+
+app.get('/api/admin/transactions', authMiddleware, adminOnly, (req, res) => {
+  const txs = db.prepare(`SELECT t.*, u.name as user_name FROM transactions t
+                          LEFT JOIN users u ON t.user_id = u.id
+                          ORDER BY time DESC LIMIT 100`).all();
+  res.json({ transactions: txs });
+});
+
+app.get('/api/admin/stats', authMiddleware, adminOnly, (req, res) => {
+  const totalPlayers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  const onlinePlayers = db.prepare('SELECT COUNT(*) as c FROM users WHERE last_seen > ?')
+                          .get(Date.now() - 5*60*1000).c;
+  const totalMSDK = db.prepare('SELECT SUM(msdk) as s FROM users').get().s || 0;
+  const activeListings = db.prepare(`SELECT COUNT(*) as c FROM market_listings WHERE status='active' AND expires_at > ?`)
+                           .get(Date.now()).c;
+  const recentDeposits = db.prepare(`SELECT SUM(amount) as s FROM transactions WHERE type='deposit' AND time > ?`)
+                            .get(Date.now() - 24*60*60*1000).s || 0;
+  const recentWithdrawals = db.prepare(`SELECT SUM(ABS(amount)) as s FROM transactions WHERE type='withdraw' AND time > ?`)
+                               .get(Date.now() - 24*60*60*1000).s || 0;
+  res.json({
+    totalPlayers, onlinePlayers, totalMSDK,
+    activeListings, recentDeposits, recentWithdrawals,
+  });
+});
+
+app.get('/api/admin/log', authMiddleware, adminOnly, (req, res) => {
+  const log = db.prepare(`SELECT * FROM admin_log ORDER BY time DESC LIMIT 200`).all();
+  res.json({ log });
+});
+
+// تعديل رصيد لاعب (أدمن فقط)
+app.post('/api/admin/adjust', authMiddleware, adminOnly, (req, res) => {
+  const { userId, amount, reason } = req.body || {};
+  const amt = parseInt(amount, 10);
+  if (!userId || isNaN(amt)) return res.status(400).json({ error: 'بيانات غير صحيحة' });
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!target) return res.status(404).json({ error: 'مستخدم غير موجود' });
+  db.prepare('UPDATE users SET msdk = msdk + ? WHERE id = ?').run(amt, userId);
+  // حدّث state
+  const sr = db.prepare('SELECT state_json FROM game_state WHERE user_id = ?').get(userId);
+  if (sr) {
+    const st = JSON.parse(sr.state_json);
+    st.msdk = (st.msdk||0) + amt;
+    db.prepare('UPDATE game_state SET state_json = ? WHERE user_id = ?').run(JSON.stringify(st), userId);
+  }
+  recordTx(userId, 'admin_adjust', amt, null, null, reason || 'تعديل أدمن: '+req.user.name);
+  logAdmin(req.user.id, req.user.name, 'تعديل رصيد', `لـ ${target.name}: ${amt} (${reason||''})`);
+  res.json({ ok: true });
+});
+
+// ======================== Socket.IO - الدردشة ========================
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error('غير مصرح'));
+  try {
+    const user = jwt.verify(token, JWT_SECRET);
+    socket.user = user;
+    next();
+  } catch(e) { next(new Error('token غير صحيح')); }
+});
+
+io.on('connection', (socket) => {
+  console.log(`🔌 ${socket.user.name} (#${socket.user.id}) متصل`);
+  socket.join('user:'+socket.user.id);
+  socket.join('global');
+
+  // أعلم الآخرين
+  io.to('global').emit('presence', { type:'join', name: socket.user.name });
+
+  // الدردشة
+  socket.on('chat:send', (data) => {
+    const text = (data?.text || '').trim().slice(0, 300);
+    if (!text) return;
+    const msg = {
+      user_id: socket.user.id,
+      user_name: socket.user.name,
+      text,
+      time: Date.now(),
+    };
+    db.prepare(`INSERT INTO chat_messages (user_id, user_name, text, time) VALUES (?, ?, ?, ?)`)
+      .run(msg.user_id, msg.user_name, msg.text, msg.time);
+    io.to('global').emit('chat:msg', msg);
+  });
+
+  socket.on('disconnect', () => {
+    io.to('global').emit('presence', { type:'leave', name: socket.user.name });
+  });
+});
+
+// ======================== الواجهة (Static) ========================
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) return res.status(404).json({ error: 'not found' });
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ======================== تشغيل ========================
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚜 MSDK Farm Backend جاهز على المنفذ ${PORT}`);
+  console.log(`📊 قاعدة البيانات: ${DB_PATH}`);
+  console.log(`🔐 الأدمن: admin / ${ADMIN_PASSWORD}`);
+  console.log(`💡 الرابط المحلي: http://localhost:${PORT}`);
+});
+
+// تنظيف العروض المنتهية كل دقيقة
+setInterval(() => {
+  const result = db.prepare(`UPDATE market_listings SET status='expired' WHERE status='active' AND expires_at < ?`)
+                    .run(Date.now());
+  if (result.changes > 0) {
+    io.emit('market:update', { type:'cleanup', count: result.changes });
+  }
+}, 60_000);
