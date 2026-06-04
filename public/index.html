@@ -762,7 +762,7 @@ function Game({user, onLogout}){
     if (s < DAY) return Math.floor(s/3600)+'س '+Math.floor((s%3600)/60)+'د';
     return Math.floor(s/DAY)+'ي '+Math.floor((s%DAY)/3600)+'س';
   };
-  const tMul = state.timeMul || 1;
+  const tMul = (state && state.timeMul) || 1;
 
   /* ====== مساعدات شبكة ====== */
   const cellsOf = (b)=>{
@@ -1175,13 +1175,12 @@ function Game({user, onLogout}){
 
   /* ====== المهام ====== */
   useEffect(()=>{
+    if (!state) return;
     if (Date.now() > state.missionsRefreshAt && state.missions.length < 3) {
       const newMissions = [];
       for (let i=state.missions.length; i<3; i++) {
         const tpl = MISSION_TEMPLATES[Math.floor(Math.random()*MISSION_TEMPLATES.length)];
-        // 30% أكثر من القيمة المعطاة (توازن لصالح اللعبة)
         const baseVal = baseValueOf(tpl.item) * tpl.qty;
-        // المكافأة 70% من قيمة السوق (اللاعب يدفع 30% أكثر)
         const reward = Math.floor(baseVal * 0.70);
         newMissions.push({
           id: 'm_'+Date.now()+'_'+i,
@@ -1191,7 +1190,7 @@ function Game({user, onLogout}){
       setState(s => ({ ...s, missions: [...s.missions, ...newMissions],
         missionsRefreshAt: Date.now() + 4*HOUR*1000 }));
     }
-  }, [state.missions.length, state.missionsRefreshAt]);
+  }, [state?.missions?.length, state?.missionsRefreshAt]);
   const completeMission = (mId)=>{
     const m = state.missions.find(x => x.id === mId); if (!m) return;
     const cat = CROPS[m.item] ? 'crops' : 'products';
