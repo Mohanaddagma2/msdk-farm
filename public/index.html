@@ -601,7 +601,7 @@ function Game({user, onLogout}){
   const [state, setState] = useState(null); // null = جاري التحميل
   const [now, setNow] = useState(Date.now());
   const [toast, setToast] = useState('');
-  const [zoom, setZoom] = useState(0.7);
+  const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({x:0,y:0});
   const [panel, setPanel] = useState(null);
   const [panelTab, setPanelTab] = useState('build');
@@ -631,7 +631,7 @@ function Game({user, onLogout}){
           walletHistory: data.walletHistory || [],
           missions: data.missions || [],
           missionsRefreshAt: data.missionsRefreshAt || 0,
-          farmSize: data.farmSize || (12 + (data.landPlotsBought||0)),
+          farmSize: data.farmSize || (14 + (data.landPlotsBought||0)),
           timeMul: data.timeMul ?? 1,
           crops: data.crops || {},
           products: data.products || {},
@@ -1373,7 +1373,7 @@ function Game({user, onLogout}){
         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
           <button className="icon-btn" onClick={()=>setZoom(z=>Math.min(1.5, z+0.15))}>＋</button>
           <button className="icon-btn" onClick={()=>setZoom(z=>Math.max(0.3, z-0.15))}>−</button>
-          <button className="icon-btn" onClick={()=>{ setZoom(0.7); setPan({x:0,y:0}); }}>⊙</button>
+          <button className="icon-btn" onClick={()=>{ setZoom(1); setPan({x:0,y:0}); }}>⊙</button>
           <button className="icon-btn" onClick={onLogout} title="خروج"
             style={{background:'linear-gradient(180deg,#9e9e9e,#424242)',borderColor:'#212121'}}>🚪</button>
           <button className="icon-btn" onClick={resetGame} title="إعادة"
@@ -1547,17 +1547,22 @@ const BUILD_DEFS = {
 
 /* قرية جديدة افتراضية */
 function makeFreshState(user){
+  const fp = (id, x, y) => ({ id, type:'farmplot', level:1, x, y, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 });
   return {
     msdk: 800, xp: 0, level: 1,
     buildings: [
-      { id:1, type:'townhall', level:1, x:5, y:5, lastCollect:Date.now() },
-      { id:2, type:'farmplot', level:1, x:3, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 },
-      { id:3, type:'farmplot', level:1, x:4, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 },
-      { id:4, type:'farmplot', level:1, x:8, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false, waterHarvestsLeft:0, fertHarvestsLeft:0 },
-      { id:5, type:'tree',     level:1, x:1, y:1 },
-      { id:6, type:'flowers',  level:1, x:11,y:1 },
+      { id:1, type:'townhall', level:1, x:6, y:6, lastCollect:Date.now() },
+      fp(2, 3, 3), fp(3, 4, 3), fp(4, 3, 4), fp(5, 4, 4),
+      { id:6, type:'tree',    level:1, x:1,  y:1 },
+      { id:7, type:'tree',    level:1, x:12, y:1 },
+      { id:8, type:'tree',    level:1, x:1,  y:12 },
+      { id:9, type:'tree',    level:1, x:12, y:12 },
+      { id:10,type:'flowers', level:1, x:9,  y:3 },
+      { id:11,type:'flowers', level:1, x:10, y:3 },
+      { id:12,type:'bush',    level:1, x:2,  y:8 },
+      { id:13,type:'bush',    level:1, x:11, y:8 },
     ],
-    nextId: 100, farmSize: 12,
+    nextId: 100, farmSize: 14,
     crops: { wheat: 3 }, products: {},
     unlockedCrops: ['wheat'], landPlotsBought: 0,
     myStand: Array(9).fill(null),
@@ -1583,7 +1588,7 @@ function initState(user){
         missions: data.missions || [],
         missionsRefreshAt: data.missionsRefreshAt || 0,
         adminLog: data.adminLog || [],
-        farmSize: data.farmSize || (12 + (data.landPlotsBought||0)),
+        farmSize: data.farmSize || (14 + (data.landPlotsBought||0)),
         timeMul: data.timeMul ?? 1,
         // ترحيل: دمج البذور القديمة في المحاصيل
         crops: (() => {
@@ -1599,18 +1604,28 @@ function initState(user){
       };
     }
   } catch (e) { console.error(e); }
-  // قرية افتراضية
+  // قرية افتراضية - تصميم جميل مثل Clash of Clans
   const initial = {
     msdk: 800, xp: 0, level: 1,
     buildings: [
-      { id:1, type:'townhall', level:1, x:5, y:5, lastCollect:Date.now() },
+      // المركز
+      { id:1, type:'townhall', level:1, x:6, y:6, lastCollect:Date.now() },
+      // 4 قطع أراضي زراعية حول المركز
       { id:2, type:'farmplot', level:1, x:3, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
       { id:3, type:'farmplot', level:1, x:4, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
-      { id:4, type:'farmplot', level:1, x:8, y:3, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
-      { id:5, type:'tree',     level:1, x:1, y:1 },
-      { id:6, type:'flowers',  level:1, x:11,y:1 },
+      { id:4, type:'farmplot', level:1, x:3, y:4, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
+      { id:5, type:'farmplot', level:1, x:4, y:4, planted:null, plantedAt:0, lastWatered:0, missedWaters:0, harvestsSinceFert:0, fertilized:false, dead:false },
+      // زينة حول القرية لتبدو جميلة
+      { id:6, type:'tree',     level:1, x:1,  y:1 },
+      { id:7, type:'tree',     level:1, x:12, y:1 },
+      { id:8, type:'tree',     level:1, x:1,  y:12 },
+      { id:9, type:'tree',     level:1, x:12, y:12 },
+      { id:10,type:'flowers',  level:1, x:9,  y:3 },
+      { id:11,type:'flowers',  level:1, x:10, y:3 },
+      { id:12,type:'bush',     level:1, x:2,  y:8 },
+      { id:13,type:'bush',     level:1, x:11, y:8 },
     ],
-    nextId: 100, farmSize: 12,
+    nextId: 100, farmSize: 14,
     crops: { wheat: 3 }, products: {},
     unlockedCrops: ['wheat'], landPlotsBought: 0,
     myStand: Array(9).fill(null), npcListings: [], npcRefreshAt: 0,
